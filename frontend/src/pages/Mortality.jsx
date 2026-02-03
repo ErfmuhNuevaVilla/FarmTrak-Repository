@@ -18,14 +18,13 @@ export default function Mortality() {
   useEffect(() => {
     const fetchBuildings = async () => {
       try {
-        const token = getToken()
-        if (!token) {
-          setError("Not authenticated")
-          return
-        }
-        const data = await apiFetch("/api/buildings", { token })
+        console.log('Mortality: Starting to fetch buildings...')
+        const data = await apiFetch("/buildings")
+        console.log('Mortality: Buildings data received:', data)
         setBuildings(data || [])
+        console.log('Mortality: Buildings state set:', data || [])
       } catch (err) {
+        console.error('Mortality: Failed to load buildings:', err)
         setError(err?.message || "Failed to load buildings")
       } finally {
         setLoadingBuildings(false)
@@ -50,22 +49,52 @@ export default function Mortality() {
     setError("")
 
     try {
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
+      const user = JSON.parse(localStorage.getItem('farmtrak_user'))
+      const buildingIdNum = Number(buildingId)
+      
+      console.log('Mortality Debug:', {
+        buildingId,
+        buildingIdNum,
+        buildingsLength: buildings.length,
+        buildings: buildings.map(b => ({ id: b.id, name: b.name }))
+      })
+      
+      // More robust building lookup
+      let selectedBuilding = buildings.find(b => b.id === buildingIdNum)
+      
+      // If not found by ID, try string comparison (in case IDs are strings)
+      if (!selectedBuilding) {
+        selectedBuilding = buildings.find(b => String(b.id) === String(buildingId))
       }
-
-      await apiFetch("/api/reports/mortality", {
-        token,
+      
+      // Final fallback - create a building object with the ID
+      if (!selectedBuilding) {
+        console.warn('Building not found in list, creating fallback object')
+        selectedBuilding = {
+          id: buildingIdNum,
+          name: `Building ${buildingIdNum}`
+        }
+      }
+      
+      console.log('Mortality: Selected building:', selectedBuilding)
+      
+      await apiFetch("/reports", {
         method: "POST",
-        body: JSON.stringify({ building_id: Number(buildingId), count: countNum })
+        body: JSON.stringify({
+          report_type: "Mortality",
+          building_id: buildingIdNum,
+          building_name: selectedBuilding.name,
+          user_id: user?.id || null,
+          data_value: countNum,
+          submitted_by: user?.name || "Unknown"
+        })
       })
 
       setCount("")
       setBuildingId("")
       success("Mortality record saved successfully!")
     } catch (err) {
+      console.error('Mortality: Submit error:', err)
       setError(err?.message || "Failed to save mortality record")
     } finally {
       setLoading(false)

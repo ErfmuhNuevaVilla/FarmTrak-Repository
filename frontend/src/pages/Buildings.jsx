@@ -20,12 +20,7 @@ export default function Buildings() {
     try {
       setLoading(true)
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      const data = await apiFetch("/api/buildings", { token })
+      const data = await apiFetch("/buildings")
       setBuildings(data || [])
     } catch (err) {
       setError(err?.message || "Failed to load buildings")
@@ -52,13 +47,7 @@ export default function Buildings() {
 
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      await apiFetch("/api/buildings", {
-        token,
+      await apiFetch("/buildings", {
         method: "POST",
         body: JSON.stringify({ name, stock_count: stockNum })
       })
@@ -73,14 +62,9 @@ export default function Buildings() {
   const confirmCullOut = async (id) => {
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      await apiFetch(`/api/buildings/${id}/cull`, {
-        token,
-        method: "PUT"
+      await apiFetch(`/buildings?id=eq.${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ stock_count: 0 })
       })
       await fetchBuildings()
     } catch (err) {
@@ -91,13 +75,7 @@ export default function Buildings() {
   const confirmDelete = async (id) => {
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      await apiFetch(`/api/buildings/${id}`, {
-        token,
+      await apiFetch(`/buildings?id=eq.${id}`, {
         method: "DELETE"
       })
       await fetchBuildings()
@@ -117,14 +95,8 @@ export default function Buildings() {
 
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      await apiFetch(`/api/buildings/${selectedBuilding.id}/stock`, {
-        token,
-        method: "PUT",
+      await apiFetch(`/buildings?id=eq.${selectedBuilding.id}`, {
+        method: "PATCH",
         body: JSON.stringify({ stock_count: stockNum })
       })
       await fetchBuildings()

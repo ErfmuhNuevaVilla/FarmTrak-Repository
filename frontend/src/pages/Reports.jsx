@@ -15,12 +15,7 @@ export default function Reports() {
 
   const fetchReports = async () => {
     try {
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      const data = await apiFetch("/api/reports", { token })
+      const data = await apiFetch("/reports")
       setReports(data || [])
     } catch (err) {
       setError(err?.message || "Failed to load reports")
@@ -29,11 +24,7 @@ export default function Reports() {
 
   const fetchBuildings = async () => {
     try {
-      const token = getToken()
-      if (!token) {
-        return
-      }
-      const data = await apiFetch("/api/buildings", { token })
+      const data = await apiFetch("/buildings")
       setBuildings(data || [])
     } catch (err) {
       console.error("Failed to load buildings:", err)

@@ -18,14 +18,13 @@ export default function Harvest() {
   useEffect(() => {
     const fetchBuildings = async () => {
       try {
-        const token = getToken()
-        if (!token) {
-          setError("Not authenticated")
-          return
-        }
-        const data = await apiFetch("/api/buildings", { token })
+        console.log('Harvest: Starting to fetch buildings...')
+        const data = await apiFetch("/buildings")
+        console.log('Harvest: Buildings data received:', data)
         setBuildings(data || [])
+        console.log('Harvest: Buildings state set:', data || [])
       } catch (err) {
+        console.error('Harvest: Failed to load buildings:', err)
         setError(err?.message || "Failed to load buildings")
       } finally {
         setLoadingBuildings(false)
@@ -50,22 +49,52 @@ export default function Harvest() {
     setError("")
 
     try {
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
+      const user = JSON.parse(localStorage.getItem('farmtrak_user'))
+      const buildingIdNum = Number(buildingId)
+      
+      console.log('Harvest Debug:', {
+        buildingId,
+        buildingIdNum,
+        buildingsLength: buildings.length,
+        buildings: buildings.map(b => ({ id: b.id, name: b.name }))
+      })
+      
+      // More robust building lookup
+      let selectedBuilding = buildings.find(b => b.id === buildingIdNum)
+      
+      // If not found by ID, try string comparison (in case IDs are strings)
+      if (!selectedBuilding) {
+        selectedBuilding = buildings.find(b => String(b.id) === String(buildingId))
       }
-
-      await apiFetch("/api/reports/harvest", {
-        token,
+      
+      // Final fallback - create a building object with the ID
+      if (!selectedBuilding) {
+        console.warn('Building not found in list, creating fallback object')
+        selectedBuilding = {
+          id: buildingIdNum,
+          name: `Building ${buildingIdNum}`
+        }
+      }
+      
+      console.log('Harvest: Selected building:', selectedBuilding)
+      
+      await apiFetch("/reports", {
         method: "POST",
-        body: JSON.stringify({ eggs: eggsNum, building_id: Number(buildingId) })
+        body: JSON.stringify({
+          report_type: "Egg Harvest",
+          building_id: buildingIdNum,
+          building_name: selectedBuilding.name,
+          user_id: user?.id || null,
+          data_value: eggsNum,
+          submitted_by: user?.name || "Unknown"
+        })
       })
 
       setEggs("")
       setBuildingId("")
       success("Harvest saved successfully!")
     } catch (err) {
+      console.error('Harvest: Submit error:', err)
       setError(err?.message || "Failed to save harvest")
     } finally {
       setLoading(false)
@@ -161,7 +190,7 @@ export default function Harvest() {
             pattern="[0-9]*"
             value={eggs}
             onChange={e => setEggs(e.target.value)}
-            placeholder="Enter total eggs collected"
+            placeholder="Enter total trays collected"
             className="
               w-full
               border

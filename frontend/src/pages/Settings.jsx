@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import DashboardLayout from "../components/layout/DashboardLayout"
 import { apiFetch } from "../lib/api"
-import { getToken, getUser, setSession } from "../lib/auth"
+import { getToken, getUser, setSession, updateUser } from "../lib/auth"
 import { useToast } from "../contexts/ToastContext"
 
 export default function Settings() {
@@ -19,25 +19,36 @@ export default function Settings() {
   const saveChanges = async () => {
     try {
       setLoading(true)
-      const token = getToken()
-      if (!token) throw new Error("Not authenticated")
+      
+      const currentUser = getUser()
+      if (!currentUser) throw new Error("Not authenticated")
 
-      const res = await apiFetch("/api/users/me", {
-        token,
-        method: "PUT",
-        body: JSON.stringify({
-          name,
-          ...(password && { password })
+      // Prepare updates object
+      const updates = {}
+      
+      // Update name if changed
+      if (name && name !== currentUser.name) {
+        updates.name = name
+      }
+      
+      // Update password if provided
+      if (password) {
+        updates.password = password
+      }
+
+      // Update Supabase auth user
+      if (Object.keys(updates).length > 0) {
+        const { user: updatedUser } = await updateUser(updates)
+        
+        // Update localStorage immediately
+        setSession({
+          token: getToken(),
+          user: updatedUser
         })
-      })
-
-      // Update stored user so Topbar + Settings reflect the new name immediately
-      if (res?.user) {
-        setSession({ token, user: res.user })
       }
 
       success("Profile updated successfully")
-      setPassword("")
+      setPassword("") // Clear password field
     } catch (err) {
       toastError(err?.message || "Failed to update profile")
     } finally {

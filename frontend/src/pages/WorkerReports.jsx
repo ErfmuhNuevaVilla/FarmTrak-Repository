@@ -15,12 +15,8 @@ export default function WorkerReports() {
 
   const fetchReports = async () => {
     try {
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-      const data = await apiFetch("/api/reports/my-reports", { token })
+      const user = JSON.parse(localStorage.getItem('farmtrak_user'))
+      const data = await apiFetch(`/reports?submitted_by=eq.${user?.name}`)
       setReports(data || [])
     } catch (err) {
       setError(err?.message || "Failed to load your reports")
@@ -29,11 +25,7 @@ export default function WorkerReports() {
 
   const fetchBuildings = async () => {
     try {
-      const token = getToken()
-      if (!token) {
-        return
-      }
-      const data = await apiFetch("/api/buildings", { token })
+      const data = await apiFetch("/buildings")
       setBuildings(data || [])
     } catch (err) {
       console.error("Failed to load buildings:", err)

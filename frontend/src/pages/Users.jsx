@@ -3,7 +3,8 @@ import DashboardLayout from "../components/layout/DashboardLayout"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import PasswordResetModal from "../components/ui/PasswordResetModal"
 import { apiFetch } from "../lib/api"
-import { getToken, getUser } from "../lib/auth"
+import { getToken, getUser, signUp, resetPassword } from "../lib/auth"
+import { useToast } from "../contexts/ToastContext"
 
 export default function Users() {
   const [users, setUsers] = useState([])
@@ -16,6 +17,7 @@ export default function Users() {
   const [addUserLoading, setAddUserLoading] = useState(false)
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
   const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const { success, error: toastError } = useToast()
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -28,14 +30,11 @@ export default function Users() {
     try {
       setLoading(true)
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Missing auth token")
-        return
-      }
-
-      const data = await apiFetch("/api/users", { token })
-      setUsers(data.users || [])
+      
+      // Use Supabase REST API to fetch users
+      const data = await apiFetch("/users")
+      
+      setUsers(data || [])
     } catch (err) {
       setError(err?.message || "Failed to load users")
     } finally {
@@ -58,15 +57,10 @@ export default function Users() {
 
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-
-      await apiFetch(`/api/users/${selectedUser.id}/disable`, {
-        token,
-        method: "PUT",
+      
+      // Use Supabase REST API to update user
+      await apiFetch(`/users?id=eq.${selectedUser.id}`, {
+        method: "PATCH",
         body: JSON.stringify({ disabled: actionType === "disable" })
       })
 
@@ -95,22 +89,13 @@ export default function Users() {
 
     setAddUserLoading(true)
     try {
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-
-      await apiFetch("/api/auth/register", {
-        token,
-        method: "POST",
-        body: JSON.stringify({
-          name: newUser.name,
-          email: newUser.email,
-          password: newUser.password,
-          role: newUser.role
-        })
-      })
+      // Use Supabase signUp instead of old API
+      const result = await signUp(
+        newUser.email,
+        newUser.password,
+        newUser.name,
+        newUser.role
+      )
 
       // Reset form and refresh users list
       setNewUser({
@@ -122,6 +107,10 @@ export default function Users() {
       })
       setShowAddUser(false)
       await fetchUsers()
+      
+      // Show success message
+      setError("")
+      success(`User "${newUser.name}" created successfully! They can now login with their credentials.`)
     } catch (err) {
       setError(err?.message || "Failed to create user")
     } finally {
@@ -145,23 +134,20 @@ export default function Users() {
     setResetPasswordLoading(true)
     try {
       setError("")
-      const token = getToken()
-      if (!token) {
-        setError("Not authenticated")
-        return
-      }
-
-      await apiFetch(`/api/users/${selectedUser.id}/reset-password`, {
-        token,
-        method: "PUT",
-        body: JSON.stringify({ password: newPassword })
-      })
-
+      
+      // For Supabase, we need to use the admin API to reset passwords
+      // Since we don't have admin API access, we'll use the resetPassword function
+      // which sends a password reset email to the user
+      await resetPassword(selectedUser.email)
+      
       setShowPasswordReset(false)
       setSelectedUser(null)
       setError("")
+      
+      // Show success message
+      success(`Password reset email sent to ${selectedUser.email}. They will receive instructions to reset their password.`)
     } catch (err) {
-      setError(err?.message || "Failed to reset password")
+      setError(err?.message || "Failed to send password reset email")
     } finally {
       setResetPasswordLoading(false)
     }

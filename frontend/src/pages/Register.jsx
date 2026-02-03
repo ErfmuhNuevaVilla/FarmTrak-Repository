@@ -13,6 +13,7 @@ export default function Register() {
     role: "worker",
   })
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
 
   function handleChange(e) {
@@ -22,6 +23,7 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError("")
+    setSuccess("")
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match")
@@ -30,10 +32,15 @@ export default function Register() {
 
     setLoading(true)
     try {
-      await signUp(formData.email, formData.password, formData.name, formData.role)
-
-      // After register we take them to login (you could also auto-login if desired)
-      navigate("/login")
+      const result = await signUp(formData.email, formData.password, formData.name, formData.role)
+      
+      // Show success message and redirect to login
+      setSuccess("Account created successfully! Please login with your credentials.")
+      
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        navigate("/login")
+      }, 2000)
     } catch (err) {
       setError(err?.message || "Registration failed")
     } finally {
@@ -65,6 +72,12 @@ export default function Register() {
           {error ? (
             <div className="rounded-lg bg-red-100 border border-red-200 px-4 py-2 text-sm text-red-800">
               {error}
+            </div>
+          ) : null}
+          
+          {success ? (
+            <div className="rounded-lg bg-green-100 border border-green-200 px-4 py-2 text-sm text-green-800">
+              {success}
             </div>
           ) : null}
           
