@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { apiFetch } from "../lib/api"
-import { setSession } from "../lib/auth"
+import { signIn } from "../lib/auth"
+import { roleHome } from "../lib/auth"
 
 export default function Login() {
   const [email, setEmail] = useState("")
@@ -16,13 +16,9 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const data = await apiFetch("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      })
-
-      setSession({ token: data.token, user: data.user })
-      navigate("/dashboard") // redirect to dashboard
+      const { user } = await signIn(email, password)
+      const homeRoute = roleHome(user.role)
+      navigate(homeRoute) // redirect based on user role
     } catch (err) {
       setError(err?.message || "Login failed")
     } finally {

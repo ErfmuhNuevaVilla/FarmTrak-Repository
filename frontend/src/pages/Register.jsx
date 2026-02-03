@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useState } from "react"
-import { apiFetch } from "../lib/api"
+import { signUp } from "../lib/auth"
 
 export default function Register() {
   const navigate = useNavigate()
@@ -30,15 +30,7 @@ export default function Register() {
 
     setLoading(true)
     try {
-      await apiFetch("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: formData.role,
-        }),
-      })
+      await signUp(formData.email, formData.password, formData.name, formData.role)
 
       // After register we take them to login (you could also auto-login if desired)
       navigate("/login")
