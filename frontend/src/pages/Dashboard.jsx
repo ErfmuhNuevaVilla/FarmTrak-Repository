@@ -345,11 +345,55 @@ export default function Dashboard() {
       setLoading(true)
       setError("")
       
-      // Use the backend dashboard API which properly filters for today's data
-      const url = buildingId && buildingId !== "All" ? `/dashboard?buildingId=${buildingId}` : "/dashboard"
-      const dashboardData = await apiFetch(url)
+      // Fetch buildings to get livestock count
+      let buildingsUrl = "/buildings"
+      if (buildingId && buildingId !== "All") {
+        buildingsUrl += `?id=eq.${buildingId}`
+      }
+      const buildingsData = await apiFetch(buildingsUrl)
       
-      setStats(dashboardData)
+      // Calculate total livestock from buildings
+      const totalLivestock = buildingsData.reduce((sum, building) => {
+        return sum + (building.stock_count || 0)
+      }, 0)
+      
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date().toISOString().split('T')[0]
+      
+      // Calculate stats from reports filtered by today's date
+      let reportsUrl = `/reports?created_at=gte.${today}T00:00:00&created_at=lte.${today}T23:59:59`
+      if (buildingId && buildingId !== "All") {
+        reportsUrl += `&building_id=eq.${buildingId}`
+      }
+      const reportsData = await apiFetch(reportsUrl)
+      
+      const stats = {
+        livestock: totalLivestock,
+        eggProduction: 0,
+        feed: 0,
+        mortality: 0
+      }
+      
+      reportsData.forEach(item => {
+        if (item.report_type === 'Egg Harvest') {
+          stats.eggProduction += item.data_value || 0
+        } else if (item.report_type === 'Feed Usage') {
+          stats.feed += item.data_value || 0
+        } else if (item.report_type === 'Mortality') {
+          stats.mortality += item.data_value || 0
+        }
+      })
+      
+      // Calculate egg production percentage
+      // Formula: (Daily Eggs × 30 ÷ Total Livestock) × 100 = Daily Production Percentage
+      const eggProductionPercent = totalLivestock > 0
+        ? ((stats.eggProduction * 30) / totalLivestock) * 100
+        : 0;
+      
+      setStats({
+        ...stats,
+        eggProduction: Math.round(eggProductionPercent * 100) / 100 // Round to 2 decimal places
+      })
     } catch (err) {
       console.error("Failed to load dashboard data:", err)
       setError("Failed to load dashboard data")
