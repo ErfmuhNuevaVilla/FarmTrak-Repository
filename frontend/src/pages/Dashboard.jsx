@@ -340,40 +340,16 @@ export default function Dashboard() {
     }
   }
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (buildingId = null) => {
     try {
       setLoading(true)
       setError("")
       
-      // Fetch buildings to get livestock count
-      const buildingsData = await apiFetch("/buildings")
+      // Use the backend dashboard API which properly filters for today's data
+      const url = buildingId && buildingId !== "All" ? `/dashboard?buildingId=${buildingId}` : "/dashboard"
+      const dashboardData = await apiFetch(url)
       
-      // Calculate total livestock from buildings
-      const totalLivestock = buildingsData.reduce((sum, building) => {
-        return sum + (building.stock_count || 0)
-      }, 0)
-      
-      // Calculate stats from reports
-      const reportsData = await apiFetch("/reports")
-      
-      const stats = {
-        livestock: totalLivestock,
-        eggProduction: 0,
-        feed: 0,
-        mortality: 0
-      }
-      
-      reportsData.forEach(item => {
-        if (item.report_type === 'Egg Harvest') {
-          stats.eggProduction += item.data_value || 0
-        } else if (item.report_type === 'Feed Usage') {
-          stats.feed += item.data_value || 0
-        } else if (item.report_type === 'Mortality') {
-          stats.mortality += item.data_value || 0
-        }
-      })
-      
-      setStats(stats)
+      setStats(dashboardData)
     } catch (err) {
       console.error("Failed to load dashboard data:", err)
       setError("Failed to load dashboard data")
@@ -396,7 +372,7 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    fetchDashboardData()
+    fetchDashboardData(selectedBuilding)
     fetchEggTrend()
   }, [selectedBuilding])
 
