@@ -2,12 +2,16 @@ import DashboardLayout from "../components/layout/DashboardLayout"
 import { useEffect, useState } from "react"
 import { apiFetch } from "../lib/api"
 import { getToken } from "../lib/auth"
+import ConfirmModal from "../components/ui/ConfirmModal"
 
 export default function Reports() {
   const [reports, setReports] = useState([])
   const [buildings, setBuildings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedReports, setSelectedReports] = useState(new Set())
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const [typeFilter, setTypeFilter] = useState("All")
   const [buildingFilter, setBuildingFilter] = useState("All")
@@ -28,6 +32,55 @@ export default function Reports() {
       setBuildings(data || [])
     } catch (err) {
       console.error("Failed to load buildings:", err)
+    }
+  }
+
+  const handleDeleteReports = async () => {
+    try {
+      const token = getToken()
+      if (!token) {
+        setError("Authentication required")
+        return
+      }
+
+      // Delete selected reports
+      const deletePromises = Array.from(selectedReports).map(reportId => 
+        apiFetch(`/reports?id=eq.${reportId}`, {
+          method: "DELETE",
+          token
+        })
+      )
+
+      await Promise.all(deletePromises)
+      
+      // Refresh reports list
+      await fetchReports()
+      
+      // Reset selection mode
+      setSelectionMode(false)
+      setSelectedReports(new Set())
+      setShowDeleteModal(false)
+    } catch (err) {
+      console.error("Failed to delete reports:", err)
+      setError("Failed to delete reports")
+    }
+  }
+
+  const toggleReportSelection = (reportId) => {
+    const newSelected = new Set(selectedReports)
+    if (newSelected.has(reportId)) {
+      newSelected.delete(reportId)
+    } else {
+      newSelected.add(reportId)
+    }
+    setSelectedReports(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedReports.size === filteredReports.length) {
+      setSelectedReports(new Set())
+    } else {
+      setSelectedReports(new Set(filteredReports.map(r => r.id)))
     }
   }
 
@@ -134,6 +187,25 @@ export default function Reports() {
           ))}
         </select>
 
+        {/* Delete Button */}
+        <button
+          onClick={() => {
+            if (selectionMode) {
+              setSelectionMode(false)
+              setSelectedReports(new Set())
+            } else {
+              setSelectionMode(true)
+            }
+          }}
+          className={`px-4 py-2 rounded-lg text-sm sm:text-base whitespace-nowrap transition ${
+            selectionMode 
+              ? "bg-gray-300 hover:bg-gray-400 text-gray-700" 
+              : "bg-red-600 hover:bg-red-700 text-white"
+          }`}
+        >
+          {selectionMode ? "Cancel Selection" : "Delete Reports"}
+        </button>
+
         {/* Reset */}
         <button
           onClick={() => {
@@ -147,6 +219,35 @@ export default function Reports() {
         </button>
       </div>
 
+      {/* Selection Mode Actions */}
+      {selectionMode && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="text-sm sm:text-base">
+              <span className="font-medium text-yellow-800">
+                {selectedReports.size} of {filteredReports.length} reports selected
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={toggleSelectAll}
+                className="px-3 py-1 sm:px-4 sm:py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm sm:text-base transition"
+              >
+                {selectedReports.size === filteredReports.length ? "Deselect All" : "Select All"}
+              </button>
+              {selectedReports.size > 0 && (
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="px-3 py-1 sm:px-4 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm sm:text-base transition"
+                >
+                  Delete Selected ({selectedReports.size})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-md overflow-hidden">
         {loading ? (
@@ -158,6 +259,16 @@ export default function Reports() {
             <table className="w-full text-left min-w-[600px]">
               <thead className="bg-green-100 text-green-900">
                 <tr>
+                  {selectionMode && (
+                    <th className="p-2 sm:p-3 text-xs sm:text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedReports.size === filteredReports.length && filteredReports.length > 0}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      />
+                    </th>
+                  )}
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Date</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Submitted By</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Report Type</th>
@@ -168,7 +279,22 @@ export default function Reports() {
 
               <tbody>
                 {filteredReports.map((r) => (
-                  <tr key={r.id} className="border-t hover:bg-green-50">
+                  <tr 
+                    key={r.id} 
+                    className={`border-t hover:bg-green-50 ${
+                      selectionMode && selectedReports.has(r.id) ? "bg-green-50" : ""
+                    }`}
+                  >
+                    {selectionMode && (
+                      <td className="p-2 sm:p-3 text-xs sm:text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedReports.has(r.id)}
+                          onChange={() => toggleReportSelection(r.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                      </td>
+                    )}
                     <td className="p-2 sm:p-3 text-xs sm:text-sm">
                       {new Date(r.created_at).toLocaleDateString()}
                     </td>
@@ -186,7 +312,7 @@ export default function Reports() {
 
                 {filteredReports.length === 0 && (
                   <tr>
-                    <td colSpan="5" className="p-4 text-center text-gray-500 text-sm sm:text-base">
+                    <td colSpan={selectionMode ? "6" : "5"} className="p-4 text-center text-gray-500 text-sm sm:text-base">
                       {reports.length === 0
                         ? "No reports found"
                         : "No matching reports found"}
@@ -198,6 +324,17 @@ export default function Reports() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        open={showDeleteModal}
+        title="Delete Reports"
+        message={`Are you sure you want to delete ${selectedReports.size} report${selectedReports.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+        confirmText={`Delete ${selectedReports.size} Report${selectedReports.size !== 1 ? 's' : ''}`}
+        confirmColor="red"
+        onConfirm={handleDeleteReports}
+        onCancel={() => setShowDeleteModal(false)}
+      />
     </DashboardLayout>
   )
 }
