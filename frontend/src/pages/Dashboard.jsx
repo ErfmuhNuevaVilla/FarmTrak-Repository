@@ -41,12 +41,8 @@ export default function Dashboard() {
 
   const fetchEggTrend = async () => {
     try {
-      // Build Supabase query
+      // Build Supabase query - always show all buildings for trend chart
       let query = "/reports?report_type=eq.Egg Harvest"
-      
-      if (selectedBuilding !== "All") {
-        query += `&building_id=eq.${selectedBuilding}`
-      }
       
       // Get last 14 days of data
       const fourteenDaysAgo = new Date()
@@ -352,7 +348,7 @@ export default function Dashboard() {
       }
       const buildingsData = await apiFetch(buildingsUrl)
       
-      // Calculate total livestock from buildings
+      // Calculate total livestock from buildings (filtered by selected building)
       const totalLivestock = buildingsData.reduce((sum, building) => {
         return sum + (building.stock_count || 0)
       }, 0)
@@ -410,15 +406,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchBuildings(), fetchDashboardData(), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData()])
+      await Promise.all([fetchBuildings(), fetchDashboardData(selectedBuilding), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData()])
     }
     loadData()
   }, [])
 
   useEffect(() => {
     fetchDashboardData(selectedBuilding)
-    fetchEggTrend()
   }, [selectedBuilding])
+
+  useEffect(() => {
+    fetchEggTrend()
+  }, []) // Only fetch once on mount, not affected by building filter
 
   useEffect(() => {
     fetchBuildingPerformance()
