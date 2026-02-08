@@ -96,10 +96,12 @@ export default function Dashboard() {
       // Group data by building and calculate metrics
       const buildingData = {}
       data.forEach(item => {
-        if (!buildingData[item.building_id]) {
-          buildingData[item.building_id] = {
+        // Use building_name as key since building_id is null in reports
+        const buildingKey = item.building_name || 'Unknown Building'
+        if (!buildingData[buildingKey]) {
+          buildingData[buildingKey] = {
             building_id: item.building_id,
-            building_name: item.building_name || `Building ${item.building_id}`,
+            building_name: item.building_name || buildingKey,
             totalEggs: 0,
             totalFeed: 0,
             totalMortality: 0,
@@ -108,11 +110,11 @@ export default function Dashboard() {
         }
         
         if (item.report_type === 'Egg Harvest') {
-          buildingData[item.building_id].totalEggs += item.data_value || 0
+          buildingData[buildingKey].totalEggs += item.data_value || 0
         } else if (item.report_type === 'Feed Usage') {
-          buildingData[item.building_id].totalFeed += item.data_value || 0
+          buildingData[buildingKey].totalFeed += item.data_value || 0
         } else if (item.report_type === 'Mortality') {
-          buildingData[item.building_id].totalMortality += item.data_value || 0
+          buildingData[buildingKey].totalMortality += item.data_value || 0
         }
       })
       
@@ -120,10 +122,12 @@ export default function Dashboard() {
       try {
         const buildingsData = await apiFetch("/buildings")
         buildingsData.forEach(building => {
-          if (buildingData[building.id]) {
-            buildingData[building.id].stockCount = building.stock_count || 0
+          // Match by building name since that's what we're using as key
+          const buildingKey = building.name
+          if (buildingData[buildingKey]) {
+            buildingData[buildingKey].stockCount = building.stock_count || 0
             // Always use the building name from buildings table as primary source
-            buildingData[building.id].building_name = building.name
+            buildingData[buildingKey].building_name = building.name
           }
         })
       } catch (err) {
@@ -358,10 +362,16 @@ export default function Dashboard() {
       
       // Calculate stats from reports filtered by today's date
       let reportsUrl = `/reports?created_at=gte.${today}T00:00:00&created_at=lte.${today}T23:59:59`
-      if (buildingId && buildingId !== "All") {
-        reportsUrl += `&building_id=eq.${buildingId}`
-      }
-      const reportsData = await apiFetch(reportsUrl)
+      const allReportsData = await apiFetch(reportsUrl)
+      
+      // Apply building filter by building_name (since building_id is null in reports)
+      const reportsData = buildingId && buildingId !== "All"
+        ? allReportsData.filter(report => {
+            // Find the building name from the buildings data using the buildingId
+            const selectedBuilding = buildingsData.find(b => b.id === buildingId)
+            return selectedBuilding && report.building_name === selectedBuilding.name
+          })
+        : allReportsData
       
       const stats = {
         livestock: totalLivestock,
