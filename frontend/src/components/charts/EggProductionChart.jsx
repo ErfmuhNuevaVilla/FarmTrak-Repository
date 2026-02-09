@@ -8,11 +8,16 @@ export default function EggProductionChart({ data }) {
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
           <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip />
+          <YAxis 
+            label={{ value: 'Production (%)', angle: -90, position: 'insideLeft' }}
+          />
+          <Tooltip 
+            formatter={(value) => [`${value}%`, 'Production']}
+            labelFormatter={(label) => `Date: ${label}`}
+          />
           <Line
             type="monotone"
-            dataKey="eggs"
+            dataKey="production"
             stroke="#166534"
             strokeWidth={3}
           />

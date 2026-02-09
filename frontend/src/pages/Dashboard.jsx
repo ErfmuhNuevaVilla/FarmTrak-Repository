@@ -52,6 +52,12 @@ export default function Dashboard() {
       
       const data = await apiFetch(query)
       
+      // Get total livestock count for percentage calculation
+      const buildingsData = await apiFetch("/buildings")
+      const totalLivestock = buildingsData.reduce((sum, building) => {
+        return sum + (building.stock_count || 0)
+      }, 0)
+      
       // Group by date and sum eggs
       const dailyData = {}
       data.forEach(item => {
@@ -62,11 +68,19 @@ export default function Dashboard() {
         dailyData[date] += item.data_value || 0
       })
       
-      // Convert to chart format
-      const chartData = Object.entries(dailyData).map(([date, eggs]) => ({
-        date,
-        eggs
-      })).sort((a, b) => new Date(a.date) - new Date(b.date))
+      // Convert to chart format with production percentage
+      const chartData = Object.entries(dailyData).map(([date, eggs]) => {
+        // Calculate production percentage using same formula as daily card
+        // Formula: (Daily Eggs × 30 ÷ Total Livestock) × 100 = Daily Production Percentage
+        const productionPercent = totalLivestock > 0
+          ? ((eggs * 30) / totalLivestock) * 100
+          : 0
+        
+        return {
+          date,
+          production: Math.round(productionPercent * 100) / 100 // Round to 2 decimal places
+        }
+      }).sort((a, b) => new Date(a.date) - new Date(b.date))
       
       setChartData(chartData)
     } catch (err) {
@@ -135,21 +149,29 @@ export default function Dashboard() {
       }
       
       // Transform to expected format
-      const transformedData = Object.values(buildingData).map(item => ({
-        buildingName: item.building_name || `Building ${item.building_id}`,
-        building_id: item.building_id,
-        stockCount: item.stockCount,
-        dailyEggs: item.totalEggs,
-        metricType: performanceMetric,
-        value: performanceMetric === 'productionPercentage' 
-          ? item.totalEggs 
-          : performanceMetric === 'feedUsage'
-          ? item.totalFeed
-          : item.totalMortality,
-        productionPercentage: item.totalEggs,
-        feedUsage: item.totalFeed,
-        mortality: item.totalMortality
-      }))
+      const transformedData = Object.values(buildingData).map(item => {
+        // Calculate production percentage using same formula as daily card
+        // Formula: (Daily Eggs × 30 ÷ Total Livestock) × 100 = Daily Production Percentage
+        const productionPercent = item.stockCount > 0
+          ? ((item.totalEggs * 30) / item.stockCount) * 100
+          : 0
+        
+        return {
+          buildingName: item.building_name || `Building ${item.building_id}`,
+          building_id: item.building_id,
+          stockCount: item.stockCount,
+          dailyEggs: item.totalEggs,
+          metricType: performanceMetric,
+          value: performanceMetric === 'productionPercentage' 
+            ? Math.round(productionPercent * 100) / 100 // Round to 2 decimal places
+            : performanceMetric === 'feedUsage'
+            ? item.totalFeed
+            : item.totalMortality,
+          productionPercentage: Math.round(productionPercent * 100) / 100, // Round to 2 decimal places
+          feedUsage: item.totalFeed,
+          mortality: item.totalMortality
+        }
+      })
       
       setBuildingPerformanceData(transformedData)
     } catch (err) {
