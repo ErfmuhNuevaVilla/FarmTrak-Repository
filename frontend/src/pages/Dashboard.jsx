@@ -17,6 +17,7 @@ export default function Dashboard() {
   })
   const [buildings, setBuildings] = useState([])
   const [selectedBuilding, setSelectedBuilding] = useState("All")
+  const [reportType, setReportType] = useState("Daily") // Daily or Monthly
   const [chartData, setChartData] = useState([])
   const [buildingPerformanceData, setBuildingPerformanceData] = useState([])
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
@@ -459,6 +460,17 @@ export default function Dashboard() {
     fetchMonthlyData()
   }, [selectedMonth])
 
+  useEffect(() => {
+    // Refresh data when report type changes
+    if (reportType === 'Daily') {
+      fetchDashboardData(selectedBuilding)
+      fetchEggTrend()
+      fetchBuildingPerformance()
+    } else {
+      fetchMonthlyData()
+    }
+  }, [reportType])
+
   const today = new Date().toLocaleDateString()
 
   return (
@@ -471,34 +483,110 @@ export default function Dashboard() {
               Farm Operations Dashboard
             </h1>
             <p className="text-xs sm:text-sm text-gray-600">
-              Daily farm performance report · {today}
+              {reportType === 'Daily' ? 'Daily' : 'Monthly'} farm performance report · {today}
             </p>
           </div>
           
-          {/* Building Filter */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="building-filter" className="text-sm font-medium text-gray-700">
-              Building:
-            </label>
-            <select
-              id="building-filter"
-              value={selectedBuilding}
-              onChange={(e) => setSelectedBuilding(e.target.value)}
+          {/* Unified Filter Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            {/* Report Type Filter */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="report-type-filter" className="text-sm font-medium text-gray-700">
+                Report:
+              </label>
+              <select
+                id="report-type-filter"
+                value={reportType}
+                onChange={(e) => setReportType(e.target.value)}
+                className="
+                  bg-white border-2 border-gray-400 rounded-lg
+                  px-3 py-2 text-gray-900 text-sm sm:text-base
+                  focus:outline-none focus:ring-2 focus:ring-green-200
+                  min-w-[120px]
+                "
+                disabled={loading}
+              >
+                <option value="Daily">Daily</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </div>
+
+            {/* Conditional Filter: Building (for Daily) or Month (for Monthly) */}
+            {reportType === 'Daily' ? (
+              <div className="flex items-center gap-2">
+                <label htmlFor="building-filter" className="text-sm font-medium text-gray-700">
+                  Building:
+                </label>
+                <select
+                  id="building-filter"
+                  value={selectedBuilding}
+                  onChange={(e) => setSelectedBuilding(e.target.value)}
+                  className="
+                    bg-white border-2 border-gray-400 rounded-lg
+                    px-3 py-2 text-gray-900 text-sm sm:text-base
+                    focus:outline-none focus:ring-2 focus:ring-green-200
+                    min-w-[150px]
+                  "
+                  disabled={loading}
+                >
+                  <option value="All">All Buildings</option>
+                  {buildings.map((building) => (
+                    <option key={building.id} value={building.id}>
+                      {building.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
+                  Month:
+                </label>
+                <select
+                  id="month-filter"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  className="
+                    bg-white border-2 border-gray-400 rounded-lg
+                    px-3 py-2 text-gray-900 text-sm sm:text-base
+                    focus:outline-none focus:ring-2 focus:ring-green-200
+                    min-w-[150px]
+                  "
+                  disabled={loading}
+                >
+                  <option value={0}>January</option>
+                  <option value={1}>February</option>
+                  <option value={2}>March</option>
+                  <option value={3}>April</option>
+                  <option value={4}>May</option>
+                  <option value={5}>June</option>
+                  <option value={6}>July</option>
+                  <option value={7}>August</option>
+                  <option value={8}>September</option>
+                  <option value={9}>October</option>
+                  <option value={10}>November</option>
+                  <option value={11}>December</option>
+                </select>
+              </div>
+            )}
+
+            {/* Export Button */}
+            <button
+              onClick={handleExportExcel}
               className="
-                bg-white border-2 border-gray-400 rounded-lg
-                px-3 py-2 text-gray-900 text-sm sm:text-base
-                focus:outline-none focus:ring-2 focus:ring-green-200
-                min-w-[150px]
+                bg-green-600 hover:bg-green-700 text-white
+                px-4 py-2 rounded-lg text-sm font-medium
+                transition-colors duration-200
+                flex items-center gap-2
+                whitespace-nowrap
               "
               disabled={loading}
             >
-              <option value="All">All Buildings</option>
-              {buildings.map((building) => (
-                <option key={building.id} value={building.id}>
-                  {building.name}
-                </option>
-              ))}
-            </select>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export Excel
+            </button>
           </div>
         </div>
       </div>
@@ -540,30 +628,61 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Stat
-            title="Total Livestock"
-            value={stats.livestock.toLocaleString()}
-            subtitle={selectedBuilding === "All" ? "Across all buildings" : "In selected building"}
-          />
+          {reportType === 'Daily' ? (
+            <>
+              <Stat
+                title="Total Livestock"
+                value={stats.livestock.toLocaleString()}
+                subtitle={selectedBuilding === "All" ? "Across all buildings" : "In selected building"}
+              />
 
-          <Stat
-            title="Daily Egg Production"
-            value={`${stats.eggProduction.toFixed(2)}%`}
-            subtitle="Today's production efficiency"
-          />
+              <Stat
+                title="Daily Egg Production"
+                value={`${stats.eggProduction.toFixed(2)}%`}
+                subtitle="Today's production efficiency"
+              />
 
-          <Stat
-            title="Feed Used Today"
-            value={`${stats.feed.toLocaleString()} bags`}
-            subtitle="Today's feed consumption"
-          />
+              <Stat
+                title="Feed Used Today"
+                value={`${stats.feed.toLocaleString()} bags`}
+                subtitle="Today's feed consumption"
+              />
 
-          <Stat
-            title="Today's Mortality"
-            value={stats.mortality.toLocaleString()}
-            subtitle="Recorded losses today"
-            variant="danger"
-          />
+              <Stat
+                title="Today's Mortality"
+                value={stats.mortality.toLocaleString()}
+                subtitle="Recorded losses today"
+                variant="danger"
+              />
+            </>
+          ) : (
+            <>
+              <Stat
+                title="Total Livestock"
+                value={stats.livestock.toLocaleString()}
+                subtitle="Across all buildings"
+              />
+
+              <Stat
+                title="Eggs Harvested"
+                value={`${monthlyData.eggsHarvested.toLocaleString()} trays`}
+                subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
+              />
+
+              <Stat
+                title="Feed Usage"
+                value={`${monthlyData.feedUsage.toLocaleString()} bags`}
+                subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
+              />
+
+              <Stat
+                title="Mortality"
+                value={monthlyData.mortality.toLocaleString()}
+                subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
+                variant="danger"
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -652,87 +771,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Monthly Report */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-800">
-            Monthly Report
-          </h2>
-          
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            {/* Month Filter */}
-            <div className="flex items-center gap-2">
-              <label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
-                Month:
-              </label>
-              <select
-                id="month-filter"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="
-                  bg-white border-2 border-gray-400 rounded-lg
-                  px-3 py-2 text-gray-900 text-sm
-                  focus:outline-none focus:ring-2 focus:ring-green-200
-                  min-w-[150px]
-                "
-              >
-                <option value={0}>January</option>
-                <option value={1}>February</option>
-                <option value={2}>March</option>
-                <option value={3}>April</option>
-                <option value={4}>May</option>
-                <option value={5}>June</option>
-                <option value={6}>July</option>
-                <option value={7}>August</option>
-                <option value={8}>September</option>
-                <option value={9}>October</option>
-                <option value={10}>November</option>
-                <option value={11}>December</option>
-              </select>
-            </div>
-
-            {/* Export Button */}
-            <button
-              onClick={handleExportExcel}
-              className="
-                bg-green-600 hover:bg-green-700 text-white
-                px-4 py-2 rounded-lg text-sm font-medium
-                transition-colors duration-200
-                flex items-center gap-2
-                whitespace-nowrap
-              "
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Export Excel
-            </button>
-          </div>
-        </div>
-
-        {/* Monthly Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Stat
-            title="Eggs Harvested"
-            value={`${monthlyData.eggsHarvested.toLocaleString()} trays`}
-            subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
-          />
-
-          <Stat
-            title="Feed Usage"
-            value={`${monthlyData.feedUsage.toLocaleString()} bags`}
-            subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
-          />
-
-          <Stat
-            title="Mortality"
-            value={monthlyData.mortality.toLocaleString()}
-            subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
-            variant="danger"
-          />
         </div>
       </div>
     </DashboardLayout>
