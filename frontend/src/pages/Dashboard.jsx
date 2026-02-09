@@ -20,7 +20,10 @@ export default function Dashboard() {
   const [reportType, setReportType] = useState("Daily") // Daily or Monthly
   const [chartData, setChartData] = useState([])
   const [buildingPerformanceData, setBuildingPerformanceData] = useState([])
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState(() => {
+  const dateStr = new Date().toISOString().split('T')
+  return dateStr && dateStr[0] ? dateStr[0] : new Date().toISOString().split('T')[0]
+})
   const [performanceMetric, setPerformanceMetric] = useState("productionPercentage")
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
   const [monthlyData, setMonthlyData] = useState({
@@ -48,7 +51,8 @@ export default function Dashboard() {
       // Get last 14 days of data
       const fourteenDaysAgo = new Date()
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-      const dateFilter = `&created_at=gte.${fourteenDaysAgo.toISOString().split('T')[0]}T00:00:00`
+      const dateStr = fourteenDaysAgo.toISOString().split('T')
+      const dateFilter = `&created_at=gte.${dateStr && dateStr[0] ? dateStr[0] : fourteenDaysAgo.toISOString().split('T')[0]}T00:00:00`
       query += dateFilter
       
       const data = await apiFetch(query)
@@ -368,6 +372,11 @@ export default function Dashboard() {
       setLoading(true)
       setError("")
       
+      // Defensive check for buildingId parameter
+      if (buildingId === null || buildingId === undefined) {
+        buildingId = "All"
+      }
+      
       // Fetch buildings to get livestock count
       let buildingsUrl = "/buildings"
       if (buildingId && buildingId !== "All") {
@@ -375,23 +384,86 @@ export default function Dashboard() {
       }
       const buildingsData = await apiFetch(buildingsUrl)
       
-      // Calculate total livestock from buildings (filtered by selected building)
-      const totalLivestock = buildingsData.reduce((sum, building) => {
-        return sum + (building.stock_count || 0)
-      }, 0)
+      // Defensive check for buildings data
+      if (!buildingsData || !Array.isArray(buildingsData)) {
+        console.warn('Invalid buildings data received:', buildingsData)
+        setStats({
+          livestock: 0,
+          eggProduction: 0,
+          feed: 0,
+          mortality: 0
+        })
+        return
+      }
       
       // Get today's date in YYYY-MM-DD format
-      const today = new Date().toISOString().split('T')[0]
+      const todayDateStr = new Date().toISOString().split('T')
+      const today = todayDateStr && todayDateStr[0] ? todayDateStr[0] : new Date().toISOString().split('T')[0]
       
       // Calculate stats from reports filtered by today's date
       let reportsUrl = `/reports?created_at=gte.${today}T00:00:00&created_at=lte.${today}T23:59:59`
       const allReportsData = await apiFetch(reportsUrl)
       
+      // Defensive check for reports data
+      if (!allReportsData || !Array.isArray(allReportsData)) {
+        console.warn('Invalid reports data received:', allReportsData)
+        setStats({
+          livestock: 0,
+          eggProduction: 0,
+          feed: 0,
+          mortality: 0
+        })
+        return
+      }
+      
+      // Calculate today's mortalities per building
+      const mortalityByBuilding = {}
+
+      try {
+        // Only count mortality reports
+        allReportsData.forEach(report => {
+          if (report && report.report_type === "Mortality") {
+            const buildingName = report.building_name
+            if (buildingName && !mortalityByBuilding[buildingName]) {
+              mortalityByBuilding[buildingName] = 0
+            }
+            if (buildingName) {
+              mortalityByBuilding[buildingName] += report.data_value || 0
+            }
+          }
+        })
+      } catch (err) {
+        console.error('Error processing mortality data:', err)
+        // Set empty mortality data as fallback
+        Object.keys(mortalityByBuilding).forEach(key => {
+          mortalityByBuilding[key] = 0
+        })
+      }
+      
+      // Calculate total livestock MINUS mortalities (ONLY where mortality exists)
+      let totalLivestock = 0
+      try {
+        totalLivestock = buildingsData.reduce((sum, building) => {
+          if (!building) return sum
+          
+          const buildingName = building.name
+          const stock = building.stock_count || 0
+          const mortalities = (buildingName && mortalityByBuilding[buildingName]) || 0
+
+          return sum + Math.max(stock - mortalities, 0) // Prevent negative values
+        }, 0)
+      } catch (err) {
+        console.error('Error calculating livestock:', err)
+        totalLivestock = 0
+      }
+      
       // Apply building filter by building_name (since building_id is null in reports)
       const reportsData = buildingId && buildingId !== "All"
         ? allReportsData.filter(report => {
+            if (!report) return false
+            
             // Find the building name from the buildings data using the buildingId
-            const selectedBuilding = buildingsData.find(b => b.id === buildingId)
+            const selectedBuilding = buildingsData.find(b => b && b.id === buildingId)
             return selectedBuilding && report.building_name === selectedBuilding.name
           })
         : allReportsData
@@ -404,6 +476,8 @@ export default function Dashboard() {
       }
       
       reportsData.forEach(item => {
+        if (!item) return
+        
         if (item.report_type === 'Egg Harvest') {
           stats.eggProduction += item.data_value || 0
         } else if (item.report_type === 'Feed Usage') {
@@ -726,7 +800,10 @@ export default function Dashboard() {
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={(() => {
+                    const maxDateStr = new Date().toISOString().split('T')
+                    return maxDateStr && maxDateStr[0] ? maxDateStr[0] : new Date().toISOString().split('T')[0]
+                  })()}
                   className="
                     bg-white border-2 border-gray-400 rounded-lg
                     px-3 py-2 text-gray-900 text-sm
