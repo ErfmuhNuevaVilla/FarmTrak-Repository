@@ -47,14 +47,14 @@ export default function Sidebar({ isOpen, onClose }) {
       <aside
         className={`
           fixed inset-y-0 left-0 z-50
-          w-64 min-h-screen flex flex-col shadow-lg bg-white
+          w-64 h-screen flex flex-col shadow-lg bg-white
           transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0
+          lg:sticky lg:top-0 lg:left-0 lg:translate-x-0 lg:z-40
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
         {/* Brand Header */}
-        <div className="h-16 bg-green-900 text-white px-6 flex items-center justify-between">
+        <div className="h-16 bg-green-900 text-white px-6 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <img 
               src="/Farmtrak.png" 
@@ -83,8 +83,8 @@ export default function Sidebar({ isOpen, onClose }) {
           {role === "manager" && navItem("/buildings", "Buildings", Building)}
         </nav>
 
-        {/* Bottom Section */}
-        <div className="mt-auto border-t border-green-800/30 p-4 bg-green-900 text-white">
+        {/* Bottom Section - Fixed at bottom */}
+        <div className="flex-shrink-0 border-t border-green-800/30 p-4 bg-green-900 text-white">
           <Link
             to="/settings"
             onClick={onClose}
