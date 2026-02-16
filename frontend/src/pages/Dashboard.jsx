@@ -29,8 +29,10 @@ export default function Dashboard() {
   const [monthlyData, setMonthlyData] = useState({
     eggsHarvested: 0,
     feedUsage: 0,
-    mortality: 0
+    mortality: 0,
+    adjustedLivestock: 0
   })
+  const [overallAdjustedLivestock, setOverallAdjustedLivestock] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
@@ -48,11 +50,11 @@ export default function Dashboard() {
       // Build Supabase query - always show all buildings for trend chart
       let query = "/reports?report_type=eq.Egg Harvest"
       
-      // Get last 14 days of data
-      const fourteenDaysAgo = new Date()
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-      const dateStr = fourteenDaysAgo.toISOString().split('T')
-      const dateFilter = `&created_at=gte.${dateStr && dateStr[0] ? dateStr[0] : fourteenDaysAgo.toISOString().split('T')[0]}T00:00:00`
+      // Get last 7 days of data
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      const dateStr = sevenDaysAgo.toISOString().split('T')
+      const dateFilter = `&created_at=gte.${dateStr && dateStr[0] ? dateStr[0] : sevenDaysAgo.toISOString().split('T')[0]}T00:00:00`
       query += dateFilter
       
       const data = await apiFetch(query)
@@ -185,7 +187,56 @@ export default function Dashboard() {
     }
   }
 
-  const fetchMonthlyData = async () => {
+  const fetchBuildingAdjustedLivestock = async (buildingId = null) => {
+    try {
+      // Fetch all buildings data
+      const buildingsData = await apiFetch("/buildings")
+      
+      // Fetch all mortality reports (no date filter)
+      const allMortalityReports = await apiFetch("/reports?report_type=eq.Mortality")
+      
+      // Calculate mortalities per building from all time
+      const allTimeMortalityByBuilding = {}
+      
+      allMortalityReports.forEach(report => {
+        if (report && report.report_type === "Mortality") {
+          const buildingName = report.building_name
+          if (buildingName) {
+            if (!allTimeMortalityByBuilding[buildingName]) {
+              allTimeMortalityByBuilding[buildingName] = 0
+            }
+            allTimeMortalityByBuilding[buildingName] += report.data_value || 0
+          }
+        }
+      })
+      
+      // Calculate adjusted livestock based on building filter
+      const totalLivestock = buildingsData.reduce((sum, building) => {
+        if (!building) return sum
+        
+        // If building filter is applied, only include selected building
+        if (buildingId && buildingId !== "All") {
+          const selectedBuilding = buildingsData.find(b => b && b.id === buildingId)
+          if (!selectedBuilding || building.id !== buildingId) {
+            return sum // Skip buildings that aren't selected
+          }
+        }
+        
+        const buildingName = building.name
+        const stock = building.stock_count || 0
+        const mortalities = (buildingName && allTimeMortalityByBuilding[buildingName]) || 0
+
+        return sum + Math.max(stock - mortalities, 0) // Prevent negative values
+      }, 0)
+      
+      setOverallAdjustedLivestock(totalLivestock)
+    } catch (err) {
+      console.error("Failed to calculate building adjusted livestock:", err)
+      setOverallAdjustedLivestock(0)
+    }
+  }
+
+  const fetchMonthlyData = async (buildingId = null) => {
     try {
       const currentYear = new Date().getFullYear()
       const monthStr = String(selectedMonth + 1).padStart(2, '0')
@@ -197,7 +248,21 @@ export default function Dashboard() {
       
       // Fetch all reports for the month
       const query = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
-      const data = await apiFetch(query)
+      const allMonthlyData = await apiFetch(query)
+      
+      // Fetch buildings data for livestock calculation
+      const buildingsData = await apiFetch("/buildings")
+      
+      // Apply building filter by building_name (since building_id is null in reports)
+      const data = buildingId && buildingId !== "All"
+        ? allMonthlyData.filter(report => {
+            if (!report) return false
+            
+            // Find the building name from the buildings data using the buildingId
+            const selectedBuilding = buildingsData.find(b => b && b.id === buildingId)
+            return selectedBuilding && report.building_name === selectedBuilding.name
+          })
+        : allMonthlyData
       
       // Calculate totals by report type
       const totals = {
@@ -206,6 +271,9 @@ export default function Dashboard() {
         mortality: 0
       }
       
+      // Calculate monthly mortalities per building
+      const monthlyMortalityByBuilding = {}
+      
       data.forEach(item => {
         if (item.report_type === 'Egg Harvest') {
           totals.eggsHarvested += item.data_value || 0
@@ -213,8 +281,31 @@ export default function Dashboard() {
           totals.feedUsage += item.data_value || 0
         } else if (item.report_type === 'Mortality') {
           totals.mortality += item.data_value || 0
+          
+          // Track mortalities per building
+          const buildingName = item.building_name
+          if (buildingName) {
+            if (!monthlyMortalityByBuilding[buildingName]) {
+              monthlyMortalityByBuilding[buildingName] = 0
+            }
+            monthlyMortalityByBuilding[buildingName] += item.data_value || 0
+          }
         }
       })
+      
+      // Calculate adjusted livestock (total livestock - monthly mortalities)
+      const totalLivestock = buildingsData.reduce((sum, building) => {
+        if (!building) return sum
+        
+        const buildingName = building.name
+        const stock = building.stock_count || 0
+        const mortalities = (buildingName && monthlyMortalityByBuilding[buildingName]) || 0
+
+        return sum + Math.max(stock - mortalities, 0) // Prevent negative values
+      }, 0)
+      
+      // Add adjusted livestock to totals
+      totals.adjustedLivestock = totalLivestock
       
       setMonthlyData(totals)
     } catch (err) {
@@ -222,7 +313,8 @@ export default function Dashboard() {
       setMonthlyData({
         eggsHarvested: 0,
         feedUsage: 0,
-        mortality: 0
+        mortality: 0,
+        adjustedLivestock: 0
       })
     }
   }
@@ -513,13 +605,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchBuildings(), fetchDashboardData(selectedBuilding), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData()])
+      await Promise.all([fetchBuildings(), fetchDashboardData(selectedBuilding), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData(selectedBuilding), fetchBuildingAdjustedLivestock(selectedBuilding)])
     }
     loadData()
   }, [])
 
   useEffect(() => {
     fetchDashboardData(selectedBuilding)
+  }, [selectedBuilding])
+
+  useEffect(() => {
+    fetchBuildingAdjustedLivestock(selectedBuilding)
   }, [selectedBuilding])
 
   useEffect(() => {
@@ -531,8 +627,8 @@ export default function Dashboard() {
   }, [selectedDate, performanceMetric])
 
   useEffect(() => {
-    fetchMonthlyData()
-  }, [selectedMonth])
+    fetchMonthlyData(selectedBuilding)
+  }, [selectedMonth, selectedBuilding])
 
   useEffect(() => {
     // Refresh data when report type changes
@@ -541,8 +637,10 @@ export default function Dashboard() {
       fetchEggTrend()
       fetchBuildingPerformance()
     } else {
-      fetchMonthlyData()
+      fetchMonthlyData(selectedBuilding)
     }
+    // Always update livestock when report type changes
+    fetchBuildingAdjustedLivestock(selectedBuilding)
   }, [reportType])
 
   const today = new Date().toLocaleDateString()
@@ -612,36 +710,63 @@ export default function Dashboard() {
                 </select>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
-                  Month:
-                </label>
-                <select
-                  id="month-filter"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  className="
-                    bg-white border-2 border-gray-400 rounded-lg
-                    px-3 py-2 text-gray-900 text-sm sm:text-base
-                    focus:outline-none focus:ring-2 focus:ring-green-200
-                    min-w-[150px]
-                  "
-                  disabled={loading}
-                >
-                  <option value={0}>January</option>
-                  <option value={1}>February</option>
-                  <option value={2}>March</option>
-                  <option value={3}>April</option>
-                  <option value={4}>May</option>
-                  <option value={5}>June</option>
-                  <option value={6}>July</option>
-                  <option value={7}>August</option>
-                  <option value={8}>September</option>
-                  <option value={9}>October</option>
-                  <option value={10}>November</option>
-                  <option value={11}>December</option>
-                </select>
-              </div>
+              <>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
+                    Month:
+                  </label>
+                  <select
+                    id="month-filter"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    className="
+                      bg-white border-2 border-gray-400 rounded-lg
+                      px-3 py-2 text-gray-900 text-sm sm:text-base
+                      focus:outline-none focus:ring-2 focus:ring-green-200
+                      min-w-[150px]
+                    "
+                    disabled={loading}
+                  >
+                    <option value={0}>January</option>
+                    <option value={1}>February</option>
+                    <option value={2}>March</option>
+                    <option value={3}>April</option>
+                    <option value={4}>May</option>
+                    <option value={5}>June</option>
+                    <option value={6}>July</option>
+                    <option value={7}>August</option>
+                    <option value={8}>September</option>
+                    <option value={9}>October</option>
+                    <option value={10}>November</option>
+                    <option value={11}>December</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="monthly-building-filter" className="text-sm font-medium text-gray-700">
+                    Building:
+                  </label>
+                  <select
+                    id="monthly-building-filter"
+                    value={selectedBuilding}
+                    onChange={(e) => setSelectedBuilding(e.target.value)}
+                    className="
+                      bg-white border-2 border-gray-400 rounded-lg
+                      px-3 py-2 text-gray-900 text-sm sm:text-base
+                      focus:outline-none focus:ring-2 focus:ring-green-200
+                      min-w-[150px]
+                    "
+                    disabled={loading}
+                  >
+                    <option value="All">All Buildings</option>
+                    {buildings.map((building) => (
+                      <option key={building.id} value={building.id}>
+                        {building.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             )}
 
             {/* Export Button */}
@@ -706,8 +831,8 @@ export default function Dashboard() {
             <>
               <Stat
                 title="Total Livestock"
-                value={stats.livestock.toLocaleString()}
-                subtitle={selectedBuilding === "All" ? "Across all buildings" : "In selected building"}
+                value={overallAdjustedLivestock.toLocaleString()}
+                subtitle="Current living livestock (all-time adjusted)"
               />
 
               <Stat
@@ -733,8 +858,8 @@ export default function Dashboard() {
             <>
               <Stat
                 title="Total Livestock"
-                value={stats.livestock.toLocaleString()}
-                subtitle="Across all buildings"
+                value={overallAdjustedLivestock.toLocaleString()}
+                subtitle="Current living livestock (all-time adjusted)"
               />
 
               <Stat
@@ -765,7 +890,7 @@ export default function Dashboard() {
         {/* Egg Production Trend Chart */}
         <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6 overflow-hidden">
           <h2 className="text-base sm:text-lg font-semibold mb-4 text-gray-800">
-            Egg Production Trend (Last 14 Days)
+            Egg Production Trend (Last 7 Days)
           </h2>
 
           <div className="overflow-x-auto">
