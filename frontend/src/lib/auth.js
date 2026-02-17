@@ -48,6 +48,36 @@ export async function getCurrentUser() {
 
 export async function signIn(email, password) {
   try {
+    // First, get user by email to check status before signing in
+    const { data: existingUsers, error: emailError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    console.log('Pre-login user check:', { existingUsers, emailError });
+
+    let isDisabled = false;
+    
+    if (existingUsers && !emailError) {
+      // Check if user is disabled in database
+      isDisabled = existingUsers.status === 'disabled' || existingUsers.disabled === true;
+      console.log('User disabled status from database:', isDisabled);
+    } else if (emailError && !emailError.message?.includes('No rows found')) {
+      console.error('Error checking user status:', emailError);
+    }
+
+    // Also check auth metadata if database fails or user not found
+    if (!existingUsers || emailError) {
+      // We can't check auth metadata without signing in first, so we'll proceed
+      // and check after sign in
+      console.log('User not found in database, proceeding with sign in');
+    } else if (isDisabled) {
+      // User is disabled, don't allow sign in
+      throw new Error('Your account has been disabled. Please contact administrator.');
+    }
+
+    // Proceed with sign in since user is not disabled (or we couldn't check)
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -57,23 +87,97 @@ export async function signIn(email, password) {
 
     // Store user data in localStorage for compatibility
     if (data.user) {
-      const userData = {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.user_metadata?.name || data.user.email,
-        role: data.user.user_metadata?.role || 'worker'
-      };
+      let userSessionData;
+
+      try {
+        // Double-check status after sign in (for cases where we couldn't check before)
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        console.log('Post-login user data query result:', { userData, userError });
+
+        if (userError) {
+          console.error('Error fetching user data:', userError);
+          
+          // Check auth metadata for disabled status
+          const isDisabledInMetadata = data.user.user_metadata?.disabled === true;
+          
+          if (isDisabledInMetadata) {
+            await supabase.auth.signOut();
+            throw new Error('Your account has been disabled. Please contact administrator.');
+          }
+          
+          userSessionData = {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.user_metadata?.name || data.user.email,
+            role: data.user.user_metadata?.role || 'worker',
+            status: 'enabled'
+          };
+        } else if (!userData) {
+          throw new Error('User profile not found');
+        } else {
+          // Final check if user account is disabled in database
+          const finalDisabledCheck = userData.status === 'disabled' || userData.disabled === true;
+          
+          if (finalDisabledCheck) {
+            await supabase.auth.signOut();
+            throw new Error('Your account has been disabled. Please contact administrator.');
+          }
+
+          userSessionData = {
+            id: userData.id,
+            email: userData.email,
+            name: userData.name || userData.email,
+            role: userData.role || 'worker',
+            status: userData.status || 'enabled'
+          };
+        }
+      } catch (dbError) {
+        console.error('Database query failed:', dbError);
+        
+        // Check auth metadata for disabled status
+        const isDisabledInMetadata = data.user.user_metadata?.disabled === true;
+        
+        if (isDisabledInMetadata) {
+          await supabase.auth.signOut();
+          throw new Error('Your account has been disabled. Please contact administrator.');
+        }
+        
+        // Fallback to original behavior if database query fails
+        userSessionData = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.user_metadata?.name || data.user.email,
+          role: data.user.user_metadata?.role || 'worker',
+          status: 'enabled'
+        };
+      }
       
       setSession({
         token: data.session.access_token,
-        user: userData
+        user: userSessionData
       });
 
-      return { user: userData, session: data.session };
+      return { user: userSessionData, session: data.session };
     }
 
     return data;
   } catch (error) {
+    // Ensure user is signed out on any error
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      console.error('Error signing out:', signOutError);
+    }
+    
+    // Clear any stored session data
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    
     throw new Error(error.message || 'Login failed');
   }
 }
@@ -138,6 +242,40 @@ export async function signUp(email, password, name, role = 'worker') {
   } finally {
     isRegistering = false; // Reset flag
     registeringUserId = null; // Reset user ID
+  }
+}
+
+export async function updateUserPassword(userId, newPassword) {
+  try {
+    // Create a custom solution using database function
+    // We'll create a temporary session for the target user and update their password
+    // This approach bypasses admin API requirements
+    
+    // First, check if current user has admin privileges by checking their role
+    const currentUser = getUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only administrators can reset user passwords');
+    }
+
+    // Use a database function to update the password
+    // This requires creating a PostgreSQL function in Supabase
+    const { data, error } = await supabase.rpc('admin_update_user_password', {
+      target_user_id: userId,
+      new_password: newPassword
+    });
+
+    if (error) {
+      console.error('Database function error:', error);
+      
+      // Fallback: Try to update using a different approach
+      // If the RPC function doesn't exist, we'll need to create it
+      throw new Error('Password update function not available. Please contact your database administrator to set up the admin_update_user_password function.');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Update user password error:', error);
+    throw new Error(error.message || 'Failed to update password');
   }
 }
 

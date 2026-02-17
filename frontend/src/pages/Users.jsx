@@ -3,7 +3,7 @@ import DashboardLayout from "../components/layout/DashboardLayout"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import PasswordResetModal from "../components/ui/PasswordResetModal"
 import { apiFetch } from "../lib/api"
-import { getToken, getUser, signUp, resetPassword } from "../lib/auth"
+import { getToken, getUser, signUp, resetPassword, updateUserPassword } from "../lib/auth"
 import { useToast } from "../contexts/ToastContext"
 
 export default function Users() {
@@ -135,19 +135,18 @@ export default function Users() {
     try {
       setError("")
       
-      // For Supabase, we need to use the admin API to reset passwords
-      // Since we don't have admin API access, we'll use the resetPassword function
-      // which sends a password reset email to the user
-      await resetPassword(selectedUser.email)
+      // Use the new admin password update function
+      await updateUserPassword(selectedUser.id, newPassword)
       
       setShowPasswordReset(false)
       setSelectedUser(null)
       setError("")
       
       // Show success message
-      success(`Password reset email sent to ${selectedUser.email}. They will receive instructions to reset their password.`)
+      success(`Password for "${selectedUser.name}" has been successfully updated!`)
     } catch (err) {
-      setError(err?.message || "Failed to send password reset email")
+      console.error('Password update error:', err)
+      setError(err?.message || "Failed to update password. Admin privileges may be required.")
     } finally {
       setResetPasswordLoading(false)
     }

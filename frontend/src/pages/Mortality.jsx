@@ -45,26 +45,39 @@ export default function Mortality() {
       return 0
     }
     
-    const buildingIdNum = Number(buildingId)
-    if (isNaN(buildingIdNum)) {
-      console.warn('Invalid building ID provided to getBuildingStock:', buildingId)
-      return 0
-    }
-    
-    console.log('Looking for building with ID:', buildingIdNum, 'Available buildings:', buildings.map(b => ({ id: b.id, name: b.name, stock: b.stock_count })))
+    console.log('=== BUILDING DEBUG ===')
+    console.log('Looking for building with ID:', buildingId)
+    console.log('Available buildings:', buildings.map(b => ({ 
+      id: b.id, 
+      name: b.name, 
+      stock_count: b.stock_count,
+      stockCount: b.stockCount,
+      stock: b.stock,
+      livestock: b.livestock,
+      all_fields: Object.keys(b)
+    })))
     
     const selectedBuilding = buildings.find(b => {
-      // Try both number and string comparisons
-      return b.id === buildingIdNum || String(b.id) === String(buildingIdNum)
+      // Handle both string and number IDs (UUIDs are strings)
+      return b.id === buildingId || String(b.id) === String(buildingId)
     })
     
     if (!selectedBuilding) {
-      console.warn('Building not found for ID:', buildingIdNum, 'Available buildings:', buildings.map(b => ({ id: b.id, name: b.name, stock: b.stock_count })))
+      console.warn('Building not found for ID:', buildingId)
       return 0
     }
     
-    const stock = selectedBuilding.stock_count || 0
-    console.log(`Building "${selectedBuilding.name}" (ID: ${buildingIdNum}) has stock count: ${stock}`)
+    console.log('Selected building:', selectedBuilding)
+    
+    // Try multiple possible field names for stock count
+    const stock = selectedBuilding.stock_count || 
+                 selectedBuilding.stockCount || 
+                 selectedBuilding.stock || 
+                 selectedBuilding.livestock || 
+                 0
+    
+    console.log(`Building "${selectedBuilding.name}" (ID: ${buildingId}) has stock count: ${stock}`)
+    console.log('=== END DEBUG ===')
     return stock
   }
 
