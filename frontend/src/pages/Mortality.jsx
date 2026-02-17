@@ -33,6 +33,53 @@ export default function Mortality() {
     fetchBuildings()
   }, [])
 
+  const getBuildingStock = (buildingId) => {
+    if (!buildingId || buildingId === "") {
+      console.warn('No building ID provided to getBuildingStock')
+      return 0
+    }
+    
+    // Check if buildings data is loaded
+    if (!buildings || buildings.length === 0) {
+      console.warn('Buildings data not loaded yet in getBuildingStock')
+      return 0
+    }
+    
+    const buildingIdNum = Number(buildingId)
+    if (isNaN(buildingIdNum)) {
+      console.warn('Invalid building ID provided to getBuildingStock:', buildingId)
+      return 0
+    }
+    
+    console.log('Looking for building with ID:', buildingIdNum, 'Available buildings:', buildings.map(b => ({ id: b.id, name: b.name, stock: b.stock_count })))
+    
+    const selectedBuilding = buildings.find(b => {
+      // Try both number and string comparisons
+      return b.id === buildingIdNum || String(b.id) === String(buildingIdNum)
+    })
+    
+    if (!selectedBuilding) {
+      console.warn('Building not found for ID:', buildingIdNum, 'Available buildings:', buildings.map(b => ({ id: b.id, name: b.name, stock: b.stock_count })))
+      return 0
+    }
+    
+    const stock = selectedBuilding.stock_count || 0
+    console.log(`Building "${selectedBuilding.name}" (ID: ${buildingIdNum}) has stock count: ${stock}`)
+    return stock
+  }
+
+  const handleMortalityChange = (e) => {
+    const value = e.target.value
+    
+    // Only allow whole numbers
+    if (value === '' || /^[0-9]*$/.test(value)) {
+      setCount(value)
+      setError("") // Clear error when input is valid
+    } else {
+      setError("Please enter whole numbers only (no decimals or letters).")
+    }
+  }
+
   const submit = async () => {
     if (!buildingId || !count) {
       setError("Please fill out all fields.")
@@ -42,6 +89,19 @@ export default function Mortality() {
     const countNum = Number(count)
     if (isNaN(countNum) || countNum < 0) {
       setError("Mortality count must be a valid non-negative number.")
+      return
+    }
+
+    // Additional validation for whole numbers
+    if (!Number.isInteger(countNum)) {
+      setError("Mortality count must be a whole number (no decimals allowed).")
+      return
+    }
+
+    // Validate against building stock count (silent validation)
+    const buildingStock = getBuildingStock(buildingId)
+    if (countNum > buildingStock) {
+      setError("Mortality count cannot exceed the number of livestock in the selected building.")
       return
     }
 
@@ -106,11 +166,26 @@ export default function Mortality() {
       setError("Please fill out all fields.")
       return
     }
+
     const countNum = Number(count)
     if (isNaN(countNum) || countNum < 0) {
       setError("Mortality count must be a valid non-negative number.")
       return
     }
+
+    // Additional validation for whole numbers
+    if (!Number.isInteger(countNum)) {
+      setError("Mortality count must be a whole number (no decimals allowed).")
+      return
+    }
+
+    // Validate against building stock count (silent validation)
+    const buildingStock = getBuildingStock(buildingId)
+    if (countNum > buildingStock) {
+      setError("Mortality count cannot exceed the number of livestock in the selected building.")
+      return
+    }
+
     setError("")
     setModalOpen(true)
   }
@@ -175,13 +250,13 @@ export default function Mortality() {
             inputMode="numeric"
             pattern="[0-9]*"
             value={count}
-            onChange={e => setCount(e.target.value)}
+            onChange={handleMortalityChange}
             placeholder="Enter number of mortalities"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
           />
 
           <p className="text-xs text-gray-500">
-            Numbers only
+            Whole numbers only (no decimals or letters)
           </p>
         </div>
 

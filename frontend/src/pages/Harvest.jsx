@@ -33,6 +33,24 @@ export default function Harvest() {
     fetchBuildings()
   }, [])
 
+  const validateEggInput = (value) => {
+    // Allow only whole numbers (no decimals, no letters, no negatives)
+    const wholeNumberRegex = /^[0-9]*$/
+    return wholeNumberRegex.test(value)
+  }
+
+  const handleEggChange = (e) => {
+    const value = e.target.value
+    
+    // Only allow whole numbers
+    if (value === '' || validateEggInput(value)) {
+      setEggs(value)
+      setError("") // Clear error when input is valid
+    } else {
+      setError("Please enter whole numbers only (no decimals or letters).")
+    }
+  }
+
   const submit = async () => {
     if (!buildingId || !eggs) {
       setError("Please fill out all fields.")
@@ -42,6 +60,12 @@ export default function Harvest() {
     const eggsNum = Number(eggs)
     if (isNaN(eggsNum) || eggsNum < 0) {
       setError("Egg count must be a valid non-negative number.")
+      return
+    }
+
+    // Additional validation for whole numbers
+    if (!Number.isInteger(eggsNum)) {
+      setError("Egg count must be a whole number (no decimals allowed).")
       return
     }
 
@@ -109,6 +133,11 @@ export default function Harvest() {
     const eggsNum = Number(eggs)
     if (isNaN(eggsNum) || eggsNum < 0) {
       setError("Egg count must be a valid non-negative number.")
+      return
+    }
+    // Additional validation for whole numbers
+    if (!Number.isInteger(eggsNum)) {
+      setError("Egg count must be a whole number (no decimals allowed).")
       return
     }
     setError("")
@@ -189,7 +218,7 @@ export default function Harvest() {
             inputMode="numeric"
             pattern="[0-9]*"
             value={eggs}
-            onChange={e => setEggs(e.target.value)}
+            onChange={handleEggChange}
             placeholder="Enter total trays collected"
             className="
               w-full
@@ -207,7 +236,7 @@ export default function Harvest() {
           />
 
           <p className="text-xs text-gray-500">
-            Numbers only (no commas)
+            Whole numbers only (no decimals or letters)
           </p>
         </div>
 

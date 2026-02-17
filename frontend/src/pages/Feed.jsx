@@ -33,6 +33,24 @@ export default function Feed() {
     fetchBuildings()
   }, [])
 
+  const validateFeedInput = (value) => {
+    // Allow only whole numbers (no decimals, no letters, no negatives)
+    const wholeNumberRegex = /^[0-9]*$/
+    return wholeNumberRegex.test(value)
+  }
+
+  const handleFeedChange = (e) => {
+    const value = e.target.value
+    
+    // Only allow whole numbers
+    if (value === '' || validateFeedInput(value)) {
+      setFeedBags(value)
+      setError("") // Clear error when input is valid
+    } else {
+      setError("Please enter whole numbers only (no decimals or letters).")
+    }
+  }
+
   const submit = async () => {
     if (!buildingId || !feedBags) {
       setError("Please fill out all fields.")
@@ -42,6 +60,12 @@ export default function Feed() {
     const feedNum = Number(feedBags)
     if (isNaN(feedNum) || feedNum < 0) {
       setError("Feed amount must be a valid non-negative number.")
+      return
+    }
+
+    // Additional validation for whole numbers
+    if (!Number.isInteger(feedNum)) {
+      setError("Feed amount must be a whole number (no decimals allowed).")
       return
     }
 
@@ -111,6 +135,11 @@ export default function Feed() {
       setError("Feed amount must be a valid non-negative number.")
       return
     }
+    // Additional validation for whole numbers
+    if (!Number.isInteger(feedNum)) {
+      setError("Feed amount must be a whole number (no decimals allowed).")
+      return
+    }
     setError("")
     setModalOpen(true)
   }
@@ -175,13 +204,13 @@ export default function Feed() {
             inputMode="numeric"
             pattern="[0-9]*"
             value={feedBags}
-            onChange={e => setFeedBags(e.target.value)}
+            onChange={handleFeedChange}
             placeholder="Enter feed used in Bags"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
           />
 
           <p className="text-xs text-gray-500">
-            Numbers only (Bags)
+            Whole numbers only (no decimals or letters)
           </p>
         </div>
 
