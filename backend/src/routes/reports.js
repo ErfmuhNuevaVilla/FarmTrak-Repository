@@ -13,6 +13,7 @@ reportsRouter.get("/", requireAuth, requireRole("manager"), async (_req, res, ne
       `SELECT 
         r.id,
         r.submitted_by,
+        r.worker_name,
         r.report_type,
         r.data_value,
         r.created_at,
@@ -40,6 +41,7 @@ reportsRouter.get("/my-reports", requireAuth, requireRole("worker"), async (req,
       `SELECT 
         r.id,
         r.submitted_by,
+        r.worker_name,
         r.report_type,
         r.data_value,
         r.created_at,
@@ -60,6 +62,106 @@ reportsRouter.get("/my-reports", requireAuth, requireRole("worker"), async (req,
 // All POST routes require authentication and worker role
 reportsRouter.use(requireAuth);
 reportsRouter.use(requireRole("worker"));
+
+// POST /api/reports - General report submission with worker_name
+reportsRouter.post("/", async (req, res, next) => {
+  try {
+    const {
+      report_type,
+      building_id,
+      building_name,
+      data_value,
+      worker_name,
+      user_id
+    } = req.body;
+
+    const buildingId = Number(building_id || 0);
+    const dataValue = Number(data_value || 0);
+    const submittedBy = req.auth?.name || "Unknown";
+
+    if (!report_type || !["Egg Harvest", "Feed Usage", "Mortality"].includes(report_type)) {
+      throw new HttpError(400, "Valid report type is required");
+    }
+    if (!buildingId || isNaN(buildingId)) {
+      throw new HttpError(400, "Building is required");
+    }
+    if (isNaN(dataValue) || dataValue < 0) {
+      throw new HttpError(400, "Data value must be a non-negative number");
+    }
+
+    // Handle mortality with stock count validation
+    if (report_type === "Mortality") {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Lock building row so stock_count can't change during this operation
+        const buildingRes = await client.query(
+          `SELECT id, name, stock_count
+           FROM buildings
+           WHERE id = $1
+           FOR UPDATE`,
+          [buildingId]
+        );
+
+        const building = buildingRes.rows[0];
+        if (!building) throw new HttpError(400, "Invalid building selected");
+
+        const currentStock = Number(building.stock_count) || 0;
+        if (dataValue > currentStock) {
+          throw new HttpError(
+            400,
+            `Mortality count (${dataValue}) cannot exceed current livestock (${currentStock})`
+          );
+        }
+
+        const reportRes = await client.query(
+          `INSERT INTO reports (submitted_by, worker_name, report_type, building_id, data_value)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, submitted_by, worker_name, report_type, building_id, data_value, created_at`,
+          [submittedBy, worker_name, report_type, buildingId, dataValue]
+        );
+
+        const updatedBuildingRes = await client.query(
+          `UPDATE buildings
+           SET stock_count = stock_count - $1, updated_at = NOW()
+           WHERE id = $2
+           RETURNING id, name, stock_count, updated_at`,
+          [dataValue, buildingId]
+        );
+
+        await client.query("COMMIT");
+
+        res.status(201).json({
+          report: reportRes.rows[0],
+          building: updatedBuildingRes.rows[0],
+        });
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+    } else {
+      // Handle Egg Harvest and Feed Usage
+      const result = await pool.query(
+        `INSERT INTO reports (submitted_by, worker_name, report_type, building_id, data_value)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, submitted_by, worker_name, report_type, building_id, data_value, created_at`,
+        [submittedBy, worker_name, report_type, buildingId, dataValue]
+      );
+
+      res.status(201).json(result.rows[0]);
+    }
+  } catch (err) {
+    // foreign_key_violation
+    if (err && err.code === "23503") {
+      next(new HttpError(400, "Invalid building selected"));
+      return;
+    }
+    next(err);
+  }
+});
 
 // POST /api/reports/harvest - Record egg harvest
 reportsRouter.post("/harvest", async (req, res, next) => {

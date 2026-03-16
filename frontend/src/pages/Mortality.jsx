@@ -8,7 +8,9 @@ import { useToast } from "../contexts/ToastContext"
 export default function Mortality() {
   const [count, setCount] = useState("")
   const [buildingId, setBuildingId] = useState("")
+  const [workerName, setWorkerName] = useState("")
   const [buildings, setBuildings] = useState([])
+  const [allBuildings, setAllBuildings] = useState([]) // For validation
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [error, setError] = useState("")
@@ -21,8 +23,13 @@ export default function Mortality() {
         console.log('Mortality: Starting to fetch buildings...')
         const data = await apiFetch("/buildings")
         console.log('Mortality: Buildings data received:', data)
-        setBuildings(data || [])
-        console.log('Mortality: Buildings state set:', data || [])
+        // Store all buildings for validation
+        setAllBuildings(data || [])
+        // Filter out maintenance buildings for dropdown
+        const activeBuildings = (data || []).filter(building => !building.maintenance)
+        console.log('Mortality: Active buildings (filtered):', activeBuildings)
+        setBuildings(activeBuildings)
+        console.log('Mortality: Buildings state set:', activeBuildings)
       } catch (err) {
         console.error('Mortality: Failed to load buildings:', err)
         setError(err?.message || "Failed to load buildings")
@@ -94,7 +101,7 @@ export default function Mortality() {
   }
 
   const submit = async () => {
-    if (!buildingId || !count) {
+    if (!buildingId || !count || !workerName.trim()) {
       setError("Please fill out all fields.")
       return
     }
@@ -159,12 +166,14 @@ export default function Mortality() {
           building_name: selectedBuilding.name,
           user_id: user?.id || null,
           data_value: countNum,
-          submitted_by: user?.name || "Unknown"
+          submitted_by: user?.name || "Unknown",
+          worker_name: workerName.trim()
         })
       })
 
       setCount("")
       setBuildingId("")
+      setWorkerName("")
       success("Mortality record saved successfully!")
     } catch (err) {
       console.error('Mortality: Submit error:', err)
@@ -175,8 +184,55 @@ export default function Mortality() {
   }
 
   const handleSubmitClick = () => {
-    if (!buildingId || !count) {
+    if (!buildingId || !count || !workerName.trim()) {
       setError("Please fill out all fields.")
+      return
+    }
+
+    // Check if selected building has 0 livestock using all buildings
+    console.log('Mortality validation - buildingId:', buildingId)
+    console.log('Mortality validation - buildingId type:', typeof buildingId)
+    console.log('Mortality validation - allBuildings:', allBuildings)
+    console.log('Mortality validation - allBuildings.length:', allBuildings?.length)
+    
+    // Make sure all buildings data is available
+    if (!allBuildings || allBuildings.length === 0) {
+      setError("Building data not loaded. Please wait and try again.")
+      return
+    }
+    
+    // Try multiple ways to find the building
+    let selectedBuilding = allBuildings.find(b => b.id === Number(buildingId))
+    console.log('Mortality validation - selectedBuilding (Number match):', selectedBuilding)
+    
+    // If not found, try string comparison
+    if (!selectedBuilding) {
+      selectedBuilding = allBuildings.find(b => String(b.id) === String(buildingId))
+      console.log('Mortality validation - selectedBuilding (String match):', selectedBuilding)
+    }
+    
+    // If still not found, try parsing as number again
+    if (!selectedBuilding) {
+      const buildingIdNum = parseInt(buildingId, 10)
+      if (!isNaN(buildingIdNum)) {
+        selectedBuilding = allBuildings.find(b => b.id === buildingIdNum)
+        console.log('Mortality validation - selectedBuilding (Parsed Number):', selectedBuilding)
+      }
+    }
+    
+    console.log('Mortality validation - final selectedBuilding:', selectedBuilding)
+    console.log('Mortality validation - stock_count:', selectedBuilding?.stock_count)
+    console.log('Mortality validation - stock_count type:', typeof selectedBuilding?.stock_count)
+    
+    if (!selectedBuilding) {
+      console.log('Mortality validation - ERROR: Building not found after all attempts')
+      setError(`Selected building not found. Building ID: ${buildingId}`)
+      return
+    }
+    
+    if (selectedBuilding.stock_count === 0) {
+      console.log('Mortality validation - BLOCKING: Building has 0 livestock')
+      setError("Cannot submit mortality report for buildings with 0 livestock.")
       return
     }
 
@@ -199,11 +255,13 @@ export default function Mortality() {
       return
     }
 
+    // All validations passed - clear error and open modal
     setError("")
     setModalOpen(true)
   }
 
-  const selectedBuilding = buildings.find(b => b.id === Number(buildingId))
+  // Get selected building for modal display
+  const selectedBuilding = allBuildings.find(b => b.id === Number(buildingId))
 
   return (
     <DashboardLayout>
@@ -270,6 +328,25 @@ export default function Mortality() {
 
           <p className="text-xs text-gray-500">
             Whole numbers only (no decimals or letters)
+          </p>
+        </div>
+
+        {/* Worker Name Input */}
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-gray-700">
+            Worker Name
+          </label>
+
+          <input
+            type="text"
+            value={workerName}
+            onChange={(e) => setWorkerName(e.target.value)}
+            placeholder="Enter worker name"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+          />
+
+          <p className="text-xs text-gray-500">
+            Name of worker who recorded mortality
           </p>
         </div>
 

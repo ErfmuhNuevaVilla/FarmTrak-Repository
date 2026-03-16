@@ -9,7 +9,10 @@ import {
   Users,
   Building,
   Settings2,
-  FileText
+  FileText,
+  PackageOpen,
+  Truck,
+  PackagePlus
 } from "lucide-react"
 import { getUserRole } from "../../lib/auth"
 
@@ -74,6 +77,9 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* Navigation */}
         <nav className="flex-1 bg-white px-4 py-6 space-y-2 overflow-y-auto">
           {role === "manager" && navItem("/dashboard", "Dashboard", LayoutDashboard)}
+          {role === "manager" && navItem("/inventory", "Inventory", PackageOpen)}
+          {role === "manager" && navItem("/ingoing-feed", "Ingoing Feed", PackagePlus)}
+          {role === "manager" && navItem("/deliveries", "Record Delivery", Truck)}
           {role === "worker" && navItem("/harvest", "Egg Harvest", Egg)}
           {role === "worker" && navItem("/feed", "Feed Usage", Package)}
           {role === "worker" && navItem("/mortality", "Mortality", AlertTriangle)}

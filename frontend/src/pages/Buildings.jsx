@@ -72,17 +72,20 @@ export default function Buildings() {
     }
   }
 
-  const confirmDelete = async (id) => {
+  const toggleMaintenance = async (id, isMaintenance) => {
     try {
       setError("")
       await apiFetch(`/buildings?id=eq.${id}`, {
-        method: "DELETE"
+        method: "PATCH",
+        body: JSON.stringify({ maintenance: !isMaintenance })
       })
       await fetchBuildings()
+      setModalOpen(false)
     } catch (err) {
-      alert(err?.message || "Failed to delete building")
+      alert(err?.message || "Failed to update maintenance status")
     }
   }
+
 
   const addLivestock = async (amount) => {
     if (!selectedBuilding) return
@@ -184,6 +187,7 @@ export default function Buildings() {
                 <tr>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Building</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Livestock</th>
+                  <th className="p-2 sm:p-3 text-xs sm:text-sm">Status</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Actions</th>
                 </tr>
               </thead>
@@ -194,49 +198,86 @@ export default function Buildings() {
                     <td className="p-2 sm:p-3 text-green-900 text-xs sm:text-sm">{b.name}</td>
                     <td className="p-2 sm:p-3 font-semibold text-green-900 text-xs sm:text-sm">{b.stock_count}</td>
                     <td className="p-2 sm:p-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        b.maintenance 
+                          ? 'bg-orange-100 text-orange-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {b.maintenance ? 'Maintenance' : 'In Use'}
+                      </span>
+                    </td>
+                    <td className="p-2 sm:p-3">
                       <div className="flex flex-wrap gap-2">
                         {b.stock_count === 0 ? (
-                          <button
-                            onClick={() => {
-                              setSelectedBuilding(b)
-                              setInputModalOpen(true)
-                            }}
-                            className="
-                              bg-green-600 hover:bg-green-700
-                              text-white px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
-                            "
-                          >
-                            Add Livestock
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                setSelectedBuilding(b)
+                                setInputModalOpen(true)
+                              }}
+                              disabled={b.maintenance}
+                              className={`
+                                px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
+                                ${b.maintenance 
+                                  ? "bg-gray-300 text-gray-500 cursor-not-allowed" 
+                                  : "bg-green-600 hover:bg-green-700 text-white"
+                                }
+                              `}
+                            >
+                              Add Livestock
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedBuilding(b)
+                                setActionType("maintenance")
+                                setModalOpen(true)
+                              }}
+                              disabled={b.stock_count > 0}
+                              className={`
+                                px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
+                                ${b.maintenance
+                                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                  : "bg-orange-500 hover:bg-orange-600 text-white"
+                                }
+                              `}
+                            >
+                              {b.maintenance ? "In Use" : "Maintenance"}
+                            </button>
+                          </>
                         ) : (
-                          <button
-                            onClick={() => {
-                              setSelectedBuilding(b)
-                              setActionType("cull")
-                              setModalOpen(true)
-                            }}
-                            className="
-                              bg-yellow-500 hover:bg-yellow-600
-                              text-white px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
-                            "
-                          >
-                            Cull-Out
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                setSelectedBuilding(b)
+                                setActionType("cull")
+                                setModalOpen(true)
+                              }}
+                              className="
+                                bg-yellow-500 hover:bg-yellow-600
+                                text-white px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
+                              "
+                            >
+                              Cull-Out
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedBuilding(b)
+                                setActionType("maintenance")
+                                setModalOpen(true)
+                              }}
+                              disabled={b.stock_count > 0}
+                              className={`
+                                px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
+                                ${b.stock_count > 0
+                                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                  : "bg-orange-500 hover:bg-orange-600 text-white"
+                                }
+                              `}
+                            >
+                              Maintenance
+                            </button>
+                          </>
                         )}
-
-                        <button
-                          onClick={() => {
-                            setSelectedBuilding(b)
-                            setActionType("delete")
-                            setModalOpen(true)
-                          }}
-                          className="
-                            bg-red-600 hover:bg-red-700
-                            text-white px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm
-                          "
-                        >
-                          Delete
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -244,7 +285,7 @@ export default function Buildings() {
 
                 {buildings.length === 0 && (
                   <tr>
-                    <td colSpan="3" className="p-4 text-center text-gray-500 text-sm sm:text-base">
+                    <td colSpan="4" className="p-4 text-center text-gray-500 text-sm sm:text-base">
                       No buildings found
                     </td>
                   </tr>
@@ -261,22 +302,40 @@ export default function Buildings() {
         title={
           actionType === "cull"
             ? "Confirm Cull-Out"
-            : "Confirm Delete"
+            : actionType === "maintenance"
+            ? (selectedBuilding?.maintenance ? "Confirm In Use" : "Confirm Maintenance")
+            : "Confirm Cull-Out"
         }
         message={
           actionType === "cull"
             ? `This will set the livestock count of "${selectedBuilding?.name}" to zero.`
-            : `This will permanently delete "${selectedBuilding?.name}". This action cannot be undone.`
+            : actionType === "maintenance"
+            ? (selectedBuilding?.maintenance 
+                ? `This will put "${selectedBuilding?.name}" back in use for all operations.`
+                : `This will put "${selectedBuilding?.name}" under maintenance. The building will not appear in reports and operations until it's put back in use.`)
+            : `This will set the livestock count of "${selectedBuilding?.name}" to zero.`
         }
-        confirmText={actionType === "cull" ? "Yes, Cull-Out" : "Yes, Delete"}
-        confirmColor={actionType === "cull" ? "yellow" : "red"}
+        confirmText={
+          actionType === "cull"
+            ? "Yes, Cull-Out"
+            : actionType === "maintenance"
+            ? (selectedBuilding?.maintenance ? "Yes, Put In Use" : "Yes, Put Under Maintenance")
+            : "Yes, Cull-Out"
+        }
+        confirmColor={
+          actionType === "cull"
+            ? "yellow"
+            : actionType === "maintenance"
+            ? (selectedBuilding?.maintenance ? "blue" : "orange")
+            : "yellow"
+        }
         onConfirm={() => {
           if (actionType === "cull") {
             confirmCullOut(selectedBuilding.id)
-          } else {
-            confirmDelete(selectedBuilding.id)
+            setModalOpen(false)
+          } else if (actionType === "maintenance") {
+            toggleMaintenance(selectedBuilding.id, selectedBuilding.maintenance)
           }
-          setModalOpen(false)
         }}
         onCancel={() => setModalOpen(false)}
       />

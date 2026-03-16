@@ -46,6 +46,43 @@ export async function getCurrentUser() {
   }
 }
 
+export async function verifyCurrentPassword(email, password) {
+  try {
+    // Store current session before verification
+    const { data: currentSession } = await supabase.auth.getSession();
+    const currentToken = currentSession?.session?.access_token;
+    
+    // Try to verify password by signing in
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    // If verification succeeded, restore original session
+    if (data?.user && currentToken) {
+      // Restore the original session
+      await supabase.auth.setSession({
+        access_token: currentToken,
+        refresh_token: currentSession?.session?.refresh_token
+      });
+    } else if (data?.user) {
+      // If we can't restore, at least sign out from the verification session
+      await supabase.auth.signOut();
+    }
+    
+    // If there was an error, the password is wrong
+    if (error) {
+      return { valid: false, error: error.message };
+    }
+    
+    // If we got here, password is correct
+    return { valid: true };
+  } catch (error) {
+    console.error('Error verifying password:', error);
+    return { valid: false, error: 'Password verification failed' };
+  }
+}
+
 export async function signIn(email, password) {
   try {
     // First, get user by email to check status before signing in
@@ -83,7 +120,19 @@ export async function signIn(email, password) {
       password,
     });
 
-    if (error) throw error;
+    if (error) {
+      // Check if error is related to email confirmation
+      if (error.message?.includes('Email not confirmed')) {
+        throw new Error('Please confirm your email before logging in. Check your inbox for the confirmation email.');
+      }
+      throw error;
+    }
+
+    // Check if email is confirmed
+    if (data.user && !data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      throw new Error('Please confirm your email before logging in. Check your inbox for the confirmation email.');
+    }
 
     // Store user data in localStorage for compatibility
     if (data.user) {
@@ -194,6 +243,7 @@ export async function signUp(email, password, name, role = 'worker') {
       email,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/email-verified`,
         data: {
           name,
           role
@@ -206,23 +256,23 @@ export async function signUp(email, password, name, role = 'worker') {
     // Store the user ID being registered to prevent their auto-login
     if (data.user) {
       registeringUserId = data.user.id;
-    }
-
-    // If user was created but trigger didn't work, create profile manually
-    if (data.user && !data.session) {
+      
+      // Create user profile in database table
       try {
-        // Try to create profile manually
         const { error: profileError } = await supabase
           .from('users')
           .insert({
             id: data.user.id,
             email: data.user.email,
             name: name,
-            role: role
+            role: role,
+            email_confirmed_at: data.user.email_confirmed_at || null
           });
         
         if (profileError) {
-          console.warn('Profile creation failed, but user was created:', profileError);
+          console.warn('Profile creation failed:', profileError);
+        } else {
+          console.log('User profile created successfully in database');
         }
       } catch (profileErr) {
         console.warn('Manual profile creation failed:', profileErr);
@@ -234,7 +284,7 @@ export async function signUp(email, password, name, role = 'worker') {
     
     return { 
       success: true, 
-      message: "User created successfully. Please login with your credentials.",
+      message: "Account created successfully! Please check your email to confirm your account.",
       user: data.user 
     };
   } catch (error) {
@@ -333,7 +383,9 @@ export async function updateUser(updates) {
 
 export async function resetPassword(email) {
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
     if (error) throw error;
     return true;
   } catch (error) {
@@ -357,7 +409,27 @@ export function roleHome(role) {
   return "/login";
 }
 
-// Listen for auth state changes
+// Check if admin already exists
+export async function checkAdminExists() {
+  try {
+    // Check if any user with admin role exists in the users table
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'admin')
+      .limit(1);
+    
+    if (error) {
+      console.error('Error checking admin existence:', error);
+      return false;
+    }
+    
+    return data && data.length > 0;
+  } catch (err) {
+    console.error('Failed to check admin existence:', err);
+    return false;
+  }
+}
 supabase.auth.onAuthStateChange((event, session) => {
   if (event === 'SIGNED_IN' && session) {
     // Prevent auto-login only for the specific user being registered

@@ -1,6 +1,9 @@
 import { Routes, Route, Navigate } from "react-router-dom"
 import Login from "./pages/Login"
 import Register from "./pages/Register"
+import EmailVerified from "./pages/EmailVerified"
+import ForgotPassword from "./pages/ForgotPassword"
+import UpdatePassword from "./pages/UpdatePassword"
 import Dashboard from "./pages/Dashboard"
 import Harvest from "./pages/Harvest"
 import Feed from "./pages/Feed"
@@ -8,6 +11,9 @@ import Mortality from "./pages/Mortality"
 import Reports from "./pages/Reports"
 import WorkerReports from "./pages/WorkerReports"
 import Buildings from "./pages/Buildings"
+import Inventory from "./pages/Inventory"
+import Deliveries from "./pages/Deliveries"
+import IngoingFeed from "./pages/IngoingFeed"
 import Settings from "./pages/Settings"
 import Users from "./pages/Users"
 import ProtectedRoute from "./components/auth/ProtectedRoute"
@@ -36,6 +42,9 @@ function AppRoutes() {
       {/* PUBLIC ROUTES */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/email-verified" element={<EmailVerified />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/update-password" element={<UpdatePassword />} />
 
       {/* PROTECTED ROUTES */}
       <Route
@@ -43,6 +52,33 @@ function AppRoutes() {
         element={
           <ProtectedRoute roles={["manager"]}>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/inventory"
+        element={
+          <ProtectedRoute roles={["manager"]}>
+            <Inventory />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/deliveries"
+        element={
+          <ProtectedRoute roles={["manager"]}>
+            <Deliveries />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/ingoing-feed"
+        element={
+          <ProtectedRoute roles={["manager"]}>
+            <IngoingFeed />
           </ProtectedRoute>
         }
       />

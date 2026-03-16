@@ -4,11 +4,11 @@ import { signIn } from "../lib/auth"
 import { roleHome } from "../lib/auth"
 
 export default function Login() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -102,6 +102,23 @@ export default function Login() {
           >
             {loading ? "Signing in..." : "Enter FarmTrak"}
           </button>
+
+          {/* Forgot Password & Register Links */}
+          <div className="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0 pt-2">
+            <Link
+              to="/register"
+              className="text-green-100 hover:text-white text-sm transition-colors underline"
+            >
+              Create an account
+            </Link>
+            <button
+              type="button"
+              onClick={() => navigate("/forgot-password")}
+              className="text-green-100 hover:text-white text-sm transition-colors underline"
+            >
+              Forgot Password?
+            </button>
+          </div>
         </form>
       </div>
     </div>

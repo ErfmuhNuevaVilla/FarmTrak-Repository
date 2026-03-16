@@ -17,7 +17,7 @@ export default function Dashboard() {
   })
   const [buildings, setBuildings] = useState([])
   const [selectedBuilding, setSelectedBuilding] = useState("All")
-  const [reportType, setReportType] = useState("Daily") // Daily or Monthly
+  const [reportType, setReportType] = useState("Daily") // Daily, Monthly, or Yearly
   const [chartData, setChartData] = useState([])
   const [buildingPerformanceData, setBuildingPerformanceData] = useState([])
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -26,7 +26,14 @@ export default function Dashboard() {
 })
   const [performanceMetric, setPerformanceMetric] = useState("productionPercentage")
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [monthlyData, setMonthlyData] = useState({
+    eggsHarvested: 0,
+    feedUsage: 0,
+    mortality: 0,
+    adjustedLivestock: 0
+  })
+  const [yearlyData, setYearlyData] = useState({
     eggsHarvested: 0,
     feedUsage: 0,
     mortality: 0,
@@ -39,7 +46,9 @@ export default function Dashboard() {
   const fetchBuildings = async () => {
     try {
       const data = await apiFetch("/buildings")
-      setBuildings(data || [])
+      // Filter out buildings under maintenance for dropdowns
+      const activeBuildings = (data || []).filter(building => !building.maintenance)
+      setBuildings(activeBuildings)
     } catch (err) {
       console.error("Failed to load buildings:", err)
     }
@@ -319,6 +328,85 @@ export default function Dashboard() {
     }
   }
 
+  const fetchYearlyData = async (buildingId = null) => {
+    try {
+      const currentYear = selectedYear
+      const startDate = `${currentYear}-01-01`
+      const endDate = `${currentYear}-12-31`
+      
+      // Fetch all reports for the year
+      const query = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
+      const allYearlyData = await apiFetch(query)
+      
+      // Fetch buildings data for livestock calculation
+      const buildingsData = await apiFetch("/buildings")
+      
+      // Apply building filter by building_name (since building_id is null in reports)
+      const data = buildingId && buildingId !== "All"
+        ? allYearlyData.filter(report => {
+            if (!report) return false
+            
+            // Find the building name from the buildings data using the buildingId
+            const selectedBuilding = buildingsData.find(b => b && b.id === buildingId)
+            return selectedBuilding && report.building_name === selectedBuilding.name
+          })
+        : allYearlyData
+      
+      // Calculate totals by report type
+      const totals = {
+        eggsHarvested: 0,
+        feedUsage: 0,
+        mortality: 0
+      }
+      
+      // Calculate yearly mortalities per building
+      const yearlyMortalityByBuilding = {}
+      
+      data.forEach(item => {
+        if (item.report_type === 'Egg Harvest') {
+          totals.eggsHarvested += item.data_value || 0
+        } else if (item.report_type === 'Feed Usage') {
+          totals.feedUsage += item.data_value || 0
+        } else if (item.report_type === 'Mortality') {
+          totals.mortality += item.data_value || 0
+          
+          // Track mortalities per building
+          const buildingName = item.building_name
+          if (buildingName) {
+            if (!yearlyMortalityByBuilding[buildingName]) {
+              yearlyMortalityByBuilding[buildingName] = 0
+            }
+            yearlyMortalityByBuilding[buildingName] += item.data_value || 0
+          }
+        }
+      })
+      
+      // Calculate adjusted livestock (total livestock - yearly mortalities)
+      const totalLivestock = buildingsData.reduce((sum, building) => {
+        if (!building) return sum
+        
+        const buildingName = building.name
+        const stock = building.stock_count || 0
+        const mortalities = (buildingName && yearlyMortalityByBuilding[buildingName]) || 0
+
+        return sum + Math.max(stock - mortalities, 0) // Prevent negative values
+      }, 0)
+      
+      // Add adjusted livestock to totals
+      totals.adjustedLivestock = totalLivestock
+      
+      setYearlyData(totals)
+    } catch (err) {
+      console.error("Failed to load yearly data:", err)
+      setYearlyData({
+        eggsHarvested: 0,
+        feedUsage: 0,
+        mortality: 0,
+        adjustedLivestock: 0
+      })
+    }
+  }
+
   const handleExportExcel = async () => {
     try {
       const token = getToken()
@@ -327,73 +415,236 @@ export default function Dashboard() {
         return
       }
       
-      const currentYear = new Date().getFullYear()
-      const monthStr = String(selectedMonth + 1).padStart(2, '0')
-      const startDate = `${currentYear}-${monthStr}-01`
+      let reportsData, fileName, summaryData, workerReportsData
       
-      // Get the last day of the selected month
-      const lastDayOfMonth = new Date(currentYear, selectedMonth + 1, 0).getDate()
-      const endDate = `${currentYear}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`
-      
-      // Fetch data for export
-      const reportsQuery = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
-      const reportsData = await apiFetch(reportsQuery)
-      const buildingsData = await apiFetch("/buildings")
-      
-      // Calculate summary totals
-      const summaryTotals = {
-        totalHarvestedTrays: 0,
-        totalFeedUsed: 0,
-        totalMortalities: 0
-      }
-      
-      reportsData.forEach(report => {
-        if (report.report_type === 'Egg Harvest') {
-          summaryTotals.totalHarvestedTrays += report.data_value || 0
-        } else if (report.report_type === 'Feed Usage') {
-          summaryTotals.totalFeedUsed += report.data_value || 0
-        } else if (report.report_type === 'Mortality') {
-          summaryTotals.totalMortalities += report.data_value || 0
+      if (reportType === 'Yearly') {
+        // Yearly Export
+        const currentYear = selectedYear
+        const startDate = `${currentYear}-01-01`
+        const endDate = `${currentYear}-12-31`
+        
+        // Fetch all reports for the year
+        const reportsQuery = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
+        const allYearlyData = await apiFetch(reportsQuery)
+        const buildingsData = await apiFetch("/buildings")
+        
+        // Apply building filter
+        const data = selectedBuilding && selectedBuilding !== "All"
+          ? allYearlyData.filter(report => {
+              if (!report) return false
+              const selectedBuilding = buildingsData.find(b => b && b.id === selectedBuilding)
+              return selectedBuilding && report.building_name === selectedBuilding.name
+            })
+          : allYearlyData
+        
+        // Calculate totals by report type
+        const totals = {
+          eggsHarvested: 0,
+          feedUsage: 0,
+          mortality: 0
         }
-      })
-      
-      // Create summary sheet data
-      const summaryData = [
-        { 'METRIC': 'Total Harvested Trays', 'TOTAL': summaryTotals.totalHarvestedTrays },
-        { 'METRIC': 'Total Feed Used', 'TOTAL': summaryTotals.totalFeedUsed },
-        { 'METRIC': 'Total Mortalities', 'TOTAL': summaryTotals.totalMortalities }
-      ]
-      
-      // Create worker reports sheet data
-      const workerReportsData = [
-        { 'WORKER': 'WORKER NAME', 'BUILDING': 'BUILDING NAME', 'TYPE': 'REPORT TYPE', 'VALUE': 'VALUE', 'DATE': 'DATE' }
-      ]
-      
-      // Add detailed worker reports
-      reportsData.forEach(report => {
-        console.log('Processing report:', {
-          reportId: report.id,
-          buildingId: report.building_id,
-          reportBuildingName: report.building_name,
-          allBuildings: buildingsData.map(b => ({ id: b.id, name: b.name }))
+        
+        // Calculate yearly metrics per building
+        const yearlyMortalityByBuilding = {}
+        
+        data.forEach(item => {
+          if (item.report_type === 'Egg Harvest') {
+            totals.eggsHarvested += item.data_value || 0
+          } else if (item.report_type === 'Feed Usage') {
+            totals.feedUsage += item.data_value || 0
+          } else if (item.report_type === 'Mortality') {
+            totals.mortality += item.data_value || 0
+            
+            // Track mortalities per building
+            const buildingName = item.building_name
+            if (buildingName) {
+              if (!yearlyMortalityByBuilding[buildingName]) {
+                yearlyMortalityByBuilding[buildingName] = 0
+              }
+              yearlyMortalityByBuilding[buildingName] += item.data_value || 0
+            }
+          }
         })
         
-        const building = buildingsData.find(b => b.id === report.building_id)
-        const buildingName = building?.name || report.building_name || `Building ${report.building_id}`
+        // Create summary sheet data
+        summaryData = [
+          { 'METRIC': 'Total Harvested Trays', 'TOTAL': totals.eggsHarvested },
+          { 'METRIC': 'Total Feed Used', 'TOTAL': totals.feedUsage },
+          { 'METRIC': 'Total Mortalities', 'TOTAL': totals.mortality }
+        ]
         
-        console.log('Final building name:', buildingName)
+        // Create worker reports sheet data
+        workerReportsData = [
+          { 'WORKER': 'WORKER NAME', 'BUILDING': 'BUILDING NAME', 'TYPE': 'REPORT TYPE', 'VALUE': 'VALUE', 'DATE': 'DATE' }
+        ]
         
-        // Only add data rows, not another header
-        if (report.submitted_by || report.building_id) { // Skip empty/invalid reports
-          workerReportsData.push({
-            'WORKER': report.submitted_by || 'Unknown',
-            'BUILDING': buildingName,
-            'TYPE': report.report_type,
-            'VALUE': report.data_value,
-            'DATE': new Date(report.created_at).toLocaleDateString()
-          })
+        // Add detailed worker reports
+        data.forEach(report => {
+          const building = buildingsData.find(b => b.id === report.building_id)
+          const buildingName = building?.name || report.building_name || `Building ${report.building_id}`
+          
+          if (report.submitted_by || report.building_id) {
+            workerReportsData.push({
+              'WORKER': report.submitted_by || 'Unknown',
+              'BUILDING': buildingName,
+              'TYPE': report.report_type,
+              'VALUE': report.data_value,
+              'DATE': new Date(report.created_at).toLocaleDateString()
+            })
+          }
+        })
+        
+        fileName = `Yearly_Report_${currentYear}.xlsx`
+        
+      } else if (reportType === 'Monthly') {
+        // Monthly Export (existing logic)
+        const currentYear = new Date().getFullYear()
+        const monthStr = String(selectedMonth + 1).padStart(2, '0')
+        const startDate = `${currentYear}-${monthStr}-01`
+        
+        // Get the last day of the selected month
+        const lastDayOfMonth = new Date(currentYear, selectedMonth + 1, 0).getDate()
+        const endDate = `${currentYear}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`
+        
+        // Fetch all reports for the month
+        const reportsQuery = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
+        const allMonthlyData = await apiFetch(reportsQuery)
+        const buildingsData = await apiFetch("/buildings")
+        
+        // Apply building filter by building_name (since building_id is null in reports)
+        const data = selectedBuilding && selectedBuilding !== "All"
+          ? allMonthlyData.filter(report => {
+              if (!report) return false
+              const selectedBuilding = buildingsData.find(b => b && b.id === selectedBuilding)
+              return selectedBuilding && report.building_name === selectedBuilding.name
+            })
+          : allMonthlyData
+        
+        // Calculate totals by report type
+        const totals = {
+          eggsHarvested: 0,
+          feedUsage: 0,
+          mortality: 0
         }
-      })
+        
+        // Calculate monthly mortalities per building
+        const monthlyMortalityByBuilding = {}
+        
+        data.forEach(item => {
+          if (item.report_type === 'Egg Harvest') {
+            totals.eggsHarvested += item.data_value || 0
+          } else if (item.report_type === 'Feed Usage') {
+            totals.feedUsage += item.data_value || 0
+          } else if (item.report_type === 'Mortality') {
+            totals.mortality += item.data_value || 0
+            
+            // Track mortalities per building
+            const buildingName = item.building_name
+            if (buildingName) {
+              if (!monthlyMortalityByBuilding[buildingName]) {
+                monthlyMortalityByBuilding[buildingName] = 0
+              }
+              monthlyMortalityByBuilding[buildingName] += item.data_value || 0
+            }
+          }
+        })
+        
+        // Create summary sheet data
+        summaryData = [
+          { 'METRIC': 'Total Harvested Trays', 'TOTAL': totals.eggsHarvested },
+          { 'METRIC': 'Total Feed Used', 'TOTAL': totals.feedUsage },
+          { 'METRIC': 'Total Mortalities', 'TOTAL': totals.mortality }
+        ]
+        
+        // Create worker reports sheet data
+        workerReportsData = [
+          { 'WORKER': 'WORKER NAME', 'BUILDING': 'BUILDING NAME', 'TYPE': 'REPORT TYPE', 'VALUE': 'VALUE', 'DATE': 'DATE' }
+        ]
+        
+        // Add detailed worker reports
+        data.forEach(report => {
+          const building = buildingsData.find(b => b.id === report.building_id)
+          const buildingName = building?.name || report.building_name || `Building ${report.building_id}`
+          
+          if (report.submitted_by || report.building_id) {
+            workerReportsData.push({
+              'WORKER': report.submitted_by || 'Unknown',
+              'BUILDING': buildingName,
+              'TYPE': report.report_type,
+              'VALUE': report.data_value,
+              'DATE': new Date(report.created_at).toLocaleDateString()
+            })
+          }
+        })
+        
+        // Generate improved file name
+        const monthNames = ["January", "February", "March", "April", "May", "June",
+                         "July", "August", "September", "October", "November", "December"]
+        const monthName = monthNames[selectedMonth]
+        fileName = `Monthly_Report_${monthName}_${currentYear}.xlsx`
+        
+      } else {
+        // Daily report - use existing logic
+        const currentYear = new Date().getFullYear()
+        const monthStr = String(selectedMonth + 1).padStart(2, '0')
+        const startDate = `${currentYear}-${monthStr}-01`
+        
+        // Get the last day of the selected month
+        const lastDayOfMonth = new Date(currentYear, selectedMonth + 1, 0).getDate()
+        const endDate = `${currentYear}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`
+        
+        // Fetch data for export
+        const reportsQuery = `/reports?created_at=gte.${startDate}T00:00:00&created_at=lte.${endDate}T23:59:59`
+        const reportsData = await apiFetch(reportsQuery)
+        const buildingsData = await apiFetch("/buildings")
+        
+        // Calculate summary totals
+        const summaryTotals = {
+          totalHarvestedTrays: 0,
+          totalFeedUsed: 0,
+          totalMortalities: 0
+        }
+        
+        reportsData.forEach(report => {
+          if (report.report_type === 'Egg Harvest') {
+            summaryTotals.totalHarvestedTrays += report.data_value || 0
+          } else if (report.report_type === 'Feed Usage') {
+            summaryTotals.totalFeedUsed += report.data_value || 0
+          } else if (report.report_type === 'Mortality') {
+            summaryTotals.totalMortalities += report.data_value || 0
+          }
+        })
+        
+        // Create summary sheet data
+        summaryData = [
+          { 'METRIC': 'Total Harvested Trays', 'TOTAL': summaryTotals.totalHarvestedTrays },
+          { 'METRIC': 'Total Feed Used', 'TOTAL': summaryTotals.totalFeedUsed },
+          { 'METRIC': 'Total Mortalities', 'TOTAL': summaryTotals.totalMortalities }
+        ]
+        
+        // Create worker reports sheet data
+        workerReportsData = [
+          { 'WORKER': 'WORKER NAME', 'BUILDING': 'BUILDING NAME', 'TYPE': 'REPORT TYPE', 'VALUE': 'VALUE', 'DATE': 'DATE' }
+        ]
+        
+        // Add detailed worker reports
+        reportsData.forEach(report => {
+          const building = buildingsData.find(b => b.id === report.building_id)
+          const buildingName = building?.name || report.building_name || `Building ${report.building_id}`
+          
+          if (report.submitted_by || report.building_id) {
+            workerReportsData.push({
+              'WORKER': report.submitted_by || 'Unknown',
+              'BUILDING': buildingName,
+              'TYPE': report.report_type,
+              'VALUE': report.data_value,
+              'DATE': new Date(report.created_at).toLocaleDateString()
+            })
+          }
+        })
+        
+        fileName = `Daily_Report_${new Date().toISOString().split('T')[0]}.xlsx`
+      }
       
       // Create and style summary worksheet
       const summaryWorksheet = XLSX.utils.json_to_sheet(summaryData)
@@ -444,12 +695,6 @@ export default function Dashboard() {
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Summary")
       XLSX.utils.book_append_sheet(workbook, workerReportsWorksheet, "Worker Reports")
-      
-      // Generate improved file name
-      const monthNames = ["January", "February", "March", "April", "May", "June",
-                         "July", "August", "September", "October", "November", "December"]
-      const monthName = monthNames[selectedMonth]
-      const fileName = `Monthly_Report_${monthName}_${currentYear}.xlsx`
       
       XLSX.writeFile(workbook, fileName)
       
@@ -605,7 +850,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchBuildings(), fetchDashboardData(selectedBuilding), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData(selectedBuilding), fetchBuildingAdjustedLivestock(selectedBuilding)])
+      await Promise.all([fetchBuildings(), fetchDashboardData(selectedBuilding), fetchEggTrend(), fetchBuildingPerformance(), fetchMonthlyData(selectedBuilding), fetchBuildingAdjustedLivestock(selectedBuilding), fetchYearlyData(selectedBuilding)])
     }
     loadData()
   }, [])
@@ -631,13 +876,19 @@ export default function Dashboard() {
   }, [selectedMonth, selectedBuilding])
 
   useEffect(() => {
+    fetchYearlyData(selectedBuilding)
+  }, [selectedYear, selectedBuilding])
+
+  useEffect(() => {
     // Refresh data when report type changes
     if (reportType === 'Daily') {
       fetchDashboardData(selectedBuilding)
       fetchEggTrend()
       fetchBuildingPerformance()
-    } else {
+    } else if (reportType === 'Monthly') {
       fetchMonthlyData(selectedBuilding)
+    } else if (reportType === 'Yearly') {
+      fetchYearlyData(selectedBuilding)
     }
     // Always update livestock when report type changes
     fetchBuildingAdjustedLivestock(selectedBuilding)
@@ -680,10 +931,11 @@ export default function Dashboard() {
               >
                 <option value="Daily">Daily</option>
                 <option value="Monthly">Monthly</option>
+                <option value="Yearly">Yearly</option>
               </select>
             </div>
 
-            {/* Conditional Filter: Building (for Daily) or Month (for Monthly) */}
+            {/* Conditional Filter: Building (for Daily) or Month (for Monthly) or Year (for Yearly) */}
             {reportType === 'Daily' ? (
               <div className="flex items-center gap-2">
                 <label htmlFor="building-filter" className="text-sm font-medium text-gray-700">
@@ -709,7 +961,7 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
-            ) : (
+            ) : reportType === 'Monthly' ? (
               <>
                 <div className="flex items-center gap-2">
                   <label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
@@ -748,6 +1000,58 @@ export default function Dashboard() {
                   </label>
                   <select
                     id="monthly-building-filter"
+                    value={selectedBuilding}
+                    onChange={(e) => setSelectedBuilding(e.target.value)}
+                    className="
+                      bg-white border-2 border-gray-400 rounded-lg
+                      px-3 py-2 text-gray-900 text-sm sm:text-base
+                      focus:outline-none focus:ring-2 focus:ring-green-200
+                      min-w-[150px]
+                    "
+                    disabled={loading}
+                  >
+                    <option value="All">All Buildings</option>
+                    {buildings.map((building) => (
+                      <option key={building.id} value={building.id}>
+                        {building.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="year-filter" className="text-sm font-medium text-gray-700">
+                    Year:
+                  </label>
+                  <select
+                    id="year-filter"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="
+                      bg-white border-2 border-gray-400 rounded-lg
+                      px-3 py-2 text-gray-900 text-sm sm:text-base
+                      focus:outline-none focus:ring-2 focus:ring-green-200
+                      min-w-[150px]
+                    "
+                    disabled={loading}
+                  >
+                    {/* Generate year options from 2020 to current year + 1 */}
+                    {Array.from({ length: new Date().getFullYear() - 2019 + 2 }, (_, i) => 2020 + i).map(year => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="yearly-building-filter" className="text-sm font-medium text-gray-700">
+                    Building:
+                  </label>
+                  <select
+                    id="yearly-building-filter"
                     value={selectedBuilding}
                     onChange={(e) => setSelectedBuilding(e.target.value)}
                     className="
@@ -854,7 +1158,7 @@ export default function Dashboard() {
                 variant="danger"
               />
             </>
-          ) : (
+          ) : reportType === 'Monthly' ? (
             <>
               <Stat
                 title="Total Livestock"
@@ -878,6 +1182,33 @@ export default function Dashboard() {
                 title="Mortality"
                 value={monthlyData.mortality.toLocaleString()}
                 subtitle={`${new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`}
+                variant="danger"
+              />
+            </>
+          ) : (
+            <>
+              <Stat
+                title="Total Livestock"
+                value={overallAdjustedLivestock.toLocaleString()}
+                subtitle="Current living livestock (all-time adjusted)"
+              />
+
+              <Stat
+                title="Eggs Harvested"
+                value={`${yearlyData.eggsHarvested.toLocaleString()} trays`}
+                subtitle={`Year ${selectedYear}`}
+              />
+
+              <Stat
+                title="Feed Usage"
+                value={`${yearlyData.feedUsage.toLocaleString()} bags`}
+                subtitle={`Year ${selectedYear}`}
+              />
+
+              <Stat
+                title="Mortality"
+                value={yearlyData.mortality.toLocaleString()}
+                subtitle={`Year ${selectedYear}`}
                 variant="danger"
               />
             </>

@@ -1,10 +1,9 @@
 import { Link, useNavigate } from "react-router-dom"
-import { useState } from "react"
-import { signUp } from "../lib/auth"
+import { useState, useEffect } from "react"
+import { signUp, checkAdminExists } from "../lib/auth"
 
 export default function Register() {
   const navigate = useNavigate()
-
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -15,6 +14,34 @@ export default function Register() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
+  const [adminExists, setAdminExists] = useState(false)
+  const [managerExists, setManagerExists] = useState(false)
+  const [workerExists, setWorkerExists] = useState(false)
+
+  // Check if roles already exist
+  const checkRoleExists = async () => {
+    try {
+      // Check admin existence using the new function
+      const hasAdmin = await checkAdminExists()
+      setAdminExists(hasAdmin)
+      
+      // For now, allow manager and worker roles
+      // TODO: Implement proper role checking when needed
+      setManagerExists(false)
+      setWorkerExists(false)
+    } catch (err) {
+      console.error("Failed to check role existence:", err)
+      // Set all to false as fallback to allow registration
+      setAdminExists(false)
+      setManagerExists(false)
+      setWorkerExists(false)
+    }
+  }
+
+  // Check role existence on component mount
+  useEffect(() => {
+    checkRoleExists()
+  }, [])
 
   function handleChange(e) {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -34,13 +61,13 @@ export default function Register() {
     try {
       const result = await signUp(formData.email, formData.password, formData.name, formData.role)
       
-      // Show success message and redirect to login
-      setSuccess("Account created successfully! Please login with your credentials.")
+      // Show success message about email confirmation
+      setSuccess("Account created successfully! Please check your email to confirm your account.")
       
-      // Redirect to login after 2 seconds
+      // Redirect to login after 3 seconds (longer to read message)
       setTimeout(() => {
         navigate("/login")
-      }, 2000)
+      }, 3000)
     } catch (err) {
       setError(err?.message || "Registration failed")
     } finally {
@@ -115,7 +142,7 @@ export default function Register() {
           >
             <option value="worker">Worker</option>
             <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
+            <option value="admin" disabled={adminExists}>Admin</option>
           </select>
 
           <input

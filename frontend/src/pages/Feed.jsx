@@ -8,7 +8,9 @@ import { useToast } from "../contexts/ToastContext"
 export default function Feed() {
   const [feedBags, setFeedBags] = useState("")
   const [buildingId, setBuildingId] = useState("")
+  const [workerName, setWorkerName] = useState("")
   const [buildings, setBuildings] = useState([])
+  const [allBuildings, setAllBuildings] = useState([]) // For validation
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [error, setError] = useState("")
@@ -21,8 +23,13 @@ export default function Feed() {
         console.log('Feed: Starting to fetch buildings...')
         const data = await apiFetch("/buildings")
         console.log('Feed: Buildings data received:', data)
-        setBuildings(data || [])
-        console.log('Feed: Buildings state set:', data || [])
+        // Store all buildings for validation
+        setAllBuildings(data || [])
+        // Filter out maintenance buildings for dropdown
+        const activeBuildings = (data || []).filter(building => !building.maintenance)
+        console.log('Feed: Active buildings (filtered):', activeBuildings)
+        setBuildings(activeBuildings)
+        console.log('Feed: Buildings state set:', activeBuildings)
       } catch (err) {
         console.error('Feed: Failed to load buildings:', err)
         setError(err?.message || "Failed to load buildings")
@@ -52,7 +59,7 @@ export default function Feed() {
   }
 
   const submit = async () => {
-    if (!buildingId || !feedBags) {
+    if (!buildingId || !feedBags || !workerName.trim()) {
       setError("Please fill out all fields.")
       return
     }
@@ -110,13 +117,15 @@ export default function Feed() {
           building_name: selectedBuilding.name,
           user_id: user?.id || null,
           data_value: feedNum,
-          submitted_by: user?.name || "Unknown"
+          submitted_by: user?.name || "Unknown",
+          worker_name: workerName.trim()
         })
       })
 
       setFeedBags("")
       setBuildingId("")
-      success("Feed usage recorded successfully!")
+      setWorkerName("")
+      success("Feed usage saved successfully!")
     } catch (err) {
       console.error('Feed: Submit error:', err)
       setError(err?.message || "Failed to record feed usage")
@@ -126,10 +135,58 @@ export default function Feed() {
   }
 
   const handleSubmitClick = () => {
-    if (!buildingId || !feedBags) {
+    if (!buildingId || !feedBags || !workerName.trim()) {
       setError("Please fill out all fields.")
       return
     }
+    
+    // Check if selected building has 0 livestock using all buildings
+    console.log('Feed validation - buildingId:', buildingId)
+    console.log('Feed validation - buildingId type:', typeof buildingId)
+    console.log('Feed validation - allBuildings:', allBuildings)
+    console.log('Feed validation - allBuildings.length:', allBuildings?.length)
+    
+    // Make sure all buildings data is available
+    if (!allBuildings || allBuildings.length === 0) {
+      setError("Building data not loaded. Please wait and try again.")
+      return
+    }
+    
+    // Try multiple ways to find the building
+    let selectedBuilding = allBuildings.find(b => b.id === Number(buildingId))
+    console.log('Feed validation - selectedBuilding (Number match):', selectedBuilding)
+    
+    // If not found, try string comparison
+    if (!selectedBuilding) {
+      selectedBuilding = allBuildings.find(b => String(b.id) === String(buildingId))
+      console.log('Feed validation - selectedBuilding (String match):', selectedBuilding)
+    }
+    
+    // If still not found, try parsing as number again
+    if (!selectedBuilding) {
+      const buildingIdNum = parseInt(buildingId, 10)
+      if (!isNaN(buildingIdNum)) {
+        selectedBuilding = allBuildings.find(b => b.id === buildingIdNum)
+        console.log('Feed validation - selectedBuilding (Parsed Number):', selectedBuilding)
+      }
+    }
+    
+    console.log('Feed validation - final selectedBuilding:', selectedBuilding)
+    console.log('Feed validation - stock_count:', selectedBuilding?.stock_count)
+    console.log('Feed validation - stock_count type:', typeof selectedBuilding?.stock_count)
+    
+    if (!selectedBuilding) {
+      console.log('Feed validation - ERROR: Building not found after all attempts')
+      setError(`Selected building not found. Building ID: ${buildingId}`)
+      return
+    }
+    
+    if (selectedBuilding.stock_count === 0) {
+      console.log('Feed validation - BLOCKING: Building has 0 livestock')
+      setError("Cannot submit feed report for buildings with 0 livestock.")
+      return
+    }
+    
     const feedNum = Number(feedBags)
     if (isNaN(feedNum) || feedNum < 0) {
       setError("Feed amount must be a valid non-negative number.")
@@ -140,11 +197,14 @@ export default function Feed() {
       setError("Feed amount must be a whole number (no decimals allowed).")
       return
     }
+    
+    // All validations passed - clear error and open modal
     setError("")
     setModalOpen(true)
   }
 
-  const selectedBuilding = buildings.find(b => b.id === Number(buildingId))
+  // Get selected building for modal display
+  const selectedBuilding = allBuildings.find(b => b.id === Number(buildingId))
 
   return (
     <DashboardLayout>
@@ -211,6 +271,25 @@ export default function Feed() {
 
           <p className="text-xs text-gray-500">
             Whole numbers only (no decimals or letters)
+          </p>
+        </div>
+
+        {/* Worker Name Input */}
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-gray-700">
+            Worker Name
+          </label>
+
+          <input
+            type="text"
+            value={workerName}
+            onChange={(e) => setWorkerName(e.target.value)}
+            placeholder="Enter worker name"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+
+          <p className="text-xs text-gray-500">
+            Name of worker who handled feed
           </p>
         </div>
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react"
 import DashboardLayout from "../components/layout/DashboardLayout"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import PasswordResetModal from "../components/ui/PasswordResetModal"
 import { apiFetch } from "../lib/api"
-import { getToken, getUser, signUp, resetPassword, updateUserPassword } from "../lib/auth"
+import { getToken, getUser } from "../lib/auth"
 import { useToast } from "../contexts/ToastContext"
 
 export default function Users() {
@@ -13,18 +12,7 @@ export default function Users() {
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const [actionType, setActionType] = useState("") // "disable" or "enable"
-  const [showAddUser, setShowAddUser] = useState(false)
-  const [addUserLoading, setAddUserLoading] = useState(false)
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false)
-  const [showPasswordReset, setShowPasswordReset] = useState(false)
   const { success, error: toastError } = useToast()
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    role: "worker"
-  })
 
   const fetchUsers = async () => {
     try {
@@ -73,207 +61,17 @@ export default function Users() {
     }
   }
 
-  const handleAddUser = async (e) => {
-    e.preventDefault()
-    setError("")
-
-    if (newUser.password !== newUser.confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    if (newUser.password.length < 6) {
-      setError("Password must be at least 6 characters long")
-      return
-    }
-
-    setAddUserLoading(true)
-    try {
-      // Use Supabase signUp instead of old API
-      const result = await signUp(
-        newUser.email,
-        newUser.password,
-        newUser.name,
-        newUser.role
-      )
-
-      // Reset form and refresh users list
-      setNewUser({
-        name: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        role: "worker"
-      })
-      setShowAddUser(false)
-      await fetchUsers()
-      
-      // Show success message
-      setError("")
-      success(`User "${newUser.name}" created successfully! They can now login with their credentials.`)
-    } catch (err) {
-      setError(err?.message || "Failed to create user")
-    } finally {
-      setAddUserLoading(false)
-    }
-  }
-
-  const handleNewUserChange = (e) => {
-    setNewUser({ ...newUser, [e.target.name]: e.target.value })
-  }
-
-  const handlePasswordReset = (user) => {
-    setSelectedUser(user)
-    setShowPasswordReset(true)
-    setError("")
-  }
-
-  const confirmPasswordReset = async (newPassword) => {
-    if (!selectedUser) return
-
-    setResetPasswordLoading(true)
-    try {
-      setError("")
-      
-      // Use the new admin password update function
-      await updateUserPassword(selectedUser.id, newPassword)
-      
-      setShowPasswordReset(false)
-      setSelectedUser(null)
-      setError("")
-      
-      // Show success message
-      success(`Password for "${selectedUser.name}" has been successfully updated!`)
-    } catch (err) {
-      console.error('Password update error:', err)
-      setError(err?.message || "Failed to update password. Admin privileges may be required.")
-    } finally {
-      setResetPasswordLoading(false)
-    }
-  }
 
   return (
     <DashboardLayout>
 
       {/* Header */}
-      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="mb-4 sm:mb-6">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Users Management</h1>
           <p className="text-xs sm:text-sm text-gray-600">View all users in the system.</p>
         </div>
-        <button
-          onClick={() => setShowAddUser(!showAddUser)}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-        >
-          {showAddUser ? "Cancel" : "Add New User"}
-        </button>
       </div>
-
-      {/* Add User Form */}
-      {showAddUser && (
-        <div className="bg-white shadow rounded-xl p-4 sm:p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New User</h2>
-          <form onSubmit={handleAddUser} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={newUser.name}
-                  onChange={handleNewUserChange}
-                  required
-                  placeholder="Enter full name"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={newUser.email}
-                  onChange={handleNewUserChange}
-                  required
-                  placeholder="Enter email address"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="role"
-                  value={newUser.role}
-                  onChange={handleNewUserChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                >
-                  <option value="worker">Worker</option>
-                  <option value="manager">Manager</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={newUser.password}
-                  onChange={handleNewUserChange}
-                  required
-                  placeholder="Enter password (min 6 characters)"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm Password <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  value={newUser.confirmPassword}
-                  onChange={handleNewUserChange}
-                  required
-                  placeholder="Confirm password"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddUser(false)
-                  setNewUser({
-                    name: "",
-                    email: "",
-                    password: "",
-                    confirmPassword: "",
-                    role: "worker"
-                  })
-                }}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={addUserLoading}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {addUserLoading ? "Creating..." : "Create User"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* Error Message */}
       {error && (
@@ -344,24 +142,16 @@ export default function Users() {
                           </td>
                           <td className="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">
                             {!isCurrentUser && (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handlePasswordReset(user)}
-                                  className="px-2 sm:px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white transition text-xs sm:text-sm"
-                                >
-                                  Reset Password
-                                </button>
-                                <button
-                                  onClick={() => handleDisableToggle(user, user.disabled ? "enable" : "disable")}
-                                  className={`px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm ${
-                                    user.disabled
-                                      ? "bg-green-600 hover:bg-green-700 text-white"
-                                      : "bg-red-600 hover:bg-red-700 text-white"
-                                  }`}
-                                >
-                                  {user.disabled ? "Enable" : "Disable"}
-                                </button>
-                              </div>
+                              <button
+                                onClick={() => handleDisableToggle(user, user.disabled ? "enable" : "disable")}
+                                className={`px-2 sm:px-3 py-1 rounded transition text-xs sm:text-sm ${
+                                  user.disabled
+                                    ? "bg-green-600 hover:bg-green-700 text-white"
+                                    : "bg-red-600 hover:bg-red-700 text-white"
+                                }`}
+                              >
+                                {user.disabled ? "Enable" : "Disable"}
+                              </button>
                             )}
                             {isCurrentUser && (
                               <span className="text-xs sm:text-sm text-gray-400 italic">
@@ -396,19 +186,6 @@ export default function Users() {
         }}
       />
 
-      {/* Password Reset Modal */}
-      <PasswordResetModal
-        open={showPasswordReset}
-        user={selectedUser}
-        onClose={() => {
-          setShowPasswordReset(false)
-          setSelectedUser(null)
-          setError("")
-        }}
-        onConfirm={confirmPasswordReset}
-        loading={resetPasswordLoading}
-        error={error}
-      />
     </DashboardLayout>
   )
 }

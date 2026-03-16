@@ -16,9 +16,17 @@ export default function WorkerReports() {
   const fetchReports = async () => {
     try {
       const user = JSON.parse(localStorage.getItem('farmtrak_user'))
+      console.log('WorkerReports: Fetching reports for user:', user?.name)
       const data = await apiFetch(`/reports?submitted_by=eq.${user?.name}`)
+      console.log('WorkerReports: Raw data received:', data)
+      console.log('WorkerReports: Data type:', typeof data)
+      console.log('WorkerReports: Data length:', data?.length)
+      if (data && data.length > 0) {
+        console.log('WorkerReports: Sample report:', data[0])
+      }
       setReports(data || [])
     } catch (err) {
+      console.error('WorkerReports: Fetch error:', err)
       setError(err?.message || "Failed to load your reports")
     }
   }
@@ -160,6 +168,7 @@ export default function WorkerReports() {
               <thead className="bg-green-100 text-green-900">
                 <tr>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Date</th>
+                  <th className="p-2 sm:p-3 text-xs sm:text-sm">Worker Name</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Report Type</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Building</th>
                   <th className="p-2 sm:p-3 text-xs sm:text-sm">Value</th>
@@ -172,6 +181,7 @@ export default function WorkerReports() {
                     <td className="p-2 sm:p-3 text-xs sm:text-sm">
                       {new Date(r.created_at).toLocaleDateString()}
                     </td>
+                    <td className="p-2 sm:p-3 text-xs sm:text-sm">{r.worker_name || '-'}</td>
                     <td className="p-2 sm:p-3 text-xs sm:text-sm font-medium">{r.report_type}</td>
                     <td className="p-2 sm:p-3 text-xs sm:text-sm">{r.building_name}</td>
                     <td className="p-2 sm:p-3 text-xs sm:text-sm font-semibold">
@@ -185,7 +195,7 @@ export default function WorkerReports() {
 
                 {filteredReports.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="p-4 text-center text-gray-500 text-sm sm:text-base">
+                    <td colSpan="5" className="p-4 text-center text-gray-500 text-sm sm:text-base">
                       {reports.length === 0
                         ? "You haven't submitted any reports yet"
                         : "No matching reports found"}
