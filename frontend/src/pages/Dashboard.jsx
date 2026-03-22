@@ -50,7 +50,7 @@ export default function Dashboard() {
       const activeBuildings = (data || []).filter(building => !building.maintenance)
       setBuildings(activeBuildings)
     } catch (err) {
-      console.error("Failed to load buildings:", err)
+      // Failed to load buildings
     }
   }
 
@@ -100,7 +100,7 @@ export default function Dashboard() {
       
       setChartData(chartData)
     } catch (err) {
-      console.error("Failed to load egg trend data:", err)
+      // Failed to load egg trend data
       setChartData([])
     }
   }
@@ -161,7 +161,7 @@ export default function Dashboard() {
           }
         })
       } catch (err) {
-        console.warn("Could not fetch building stock counts:", err)
+        // Could not fetch building stock counts
       }
       
       // Transform to expected format
@@ -191,7 +191,7 @@ export default function Dashboard() {
       
       setBuildingPerformanceData(transformedData)
     } catch (err) {
-      console.error("Failed to load building performance data:", err)
+      // Failed to load building performance data
       setBuildingPerformanceData([])
     }
   }
@@ -240,7 +240,7 @@ export default function Dashboard() {
       
       setOverallAdjustedLivestock(totalLivestock)
     } catch (err) {
-      console.error("Failed to calculate building adjusted livestock:", err)
+      // Failed to calculate building adjusted livestock
       setOverallAdjustedLivestock(0)
     }
   }
@@ -318,7 +318,7 @@ export default function Dashboard() {
       
       setMonthlyData(totals)
     } catch (err) {
-      console.error("Failed to load monthly data:", err)
+      // Failed to load monthly data
       setMonthlyData({
         eggsHarvested: 0,
         feedUsage: 0,
@@ -397,7 +397,7 @@ export default function Dashboard() {
       
       setYearlyData(totals)
     } catch (err) {
-      console.error("Failed to load yearly data:", err)
+      // Failed to load yearly data
       setYearlyData({
         eggsHarvested: 0,
         feedUsage: 0,
@@ -699,7 +699,7 @@ export default function Dashboard() {
       XLSX.writeFile(workbook, fileName)
       
     } catch (err) {
-      console.error("Failed to export Excel:", err)
+      // Failed to export Excel
       setError("Failed to export Excel file")
     }
   }
@@ -723,7 +723,7 @@ export default function Dashboard() {
       
       // Defensive check for buildings data
       if (!buildingsData || !Array.isArray(buildingsData)) {
-        console.warn('Invalid buildings data received:', buildingsData)
+        // Invalid buildings data received
         setStats({
           livestock: 0,
           eggProduction: 0,
@@ -743,7 +743,7 @@ export default function Dashboard() {
       
       // Defensive check for reports data
       if (!allReportsData || !Array.isArray(allReportsData)) {
-        console.warn('Invalid reports data received:', allReportsData)
+        // Invalid reports data received
         setStats({
           livestock: 0,
           eggProduction: 0,
@@ -770,7 +770,7 @@ export default function Dashboard() {
           }
         })
       } catch (err) {
-        console.error('Error processing mortality data:', err)
+        // Error processing mortality data
         // Set empty mortality data as fallback
         Object.keys(mortalityByBuilding).forEach(key => {
           mortalityByBuilding[key] = 0
@@ -790,7 +790,7 @@ export default function Dashboard() {
           return sum + Math.max(stock - mortalities, 0) // Prevent negative values
         }, 0)
       } catch (err) {
-        console.error('Error calculating livestock:', err)
+        // Error calculating livestock
         totalLivestock = 0
       }
       
@@ -835,7 +835,7 @@ export default function Dashboard() {
         eggProduction: Math.round(eggProductionPercent * 100) / 100 // Round to 2 decimal places
       })
     } catch (err) {
-      console.error("Failed to load dashboard data:", err)
+      // Failed to load dashboard data
       setError("Failed to load dashboard data")
       setStats({
         livestock: 0,
