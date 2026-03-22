@@ -106,12 +106,29 @@ export default function Inventory() {
             displayValue: `${d.feed_bags} bags`
           }))
       default:
-        // Only show Feed Usage reports in "All" filter
-        return feedUsage.map(f => ({
-          ...f,
-          type: "feed",
-          displayValue: `${f.data_value} bags`
-        }))
+        // Show all data types: Feed Usage, Egg Deliveries, and Ingoing Feed Deliveries
+        const allData = [
+          ...feedUsage.map(f => ({
+            ...f,
+            type: "feed",
+            displayValue: `${f.data_value} bags`
+          })),
+          ...deliveries
+            .filter(d => d.delivery_type === "Outgoing Eggs")
+            .map(d => ({
+              ...d,
+              type: "delivery",
+              displayValue: `${d.egg_trays} trays`
+            })),
+          ...deliveries
+            .filter(d => d.delivery_type === "Ingoing Feed")
+            .map(d => ({
+              ...d,
+              type: "delivery",
+              displayValue: `${d.feed_bags} bags`
+            }))
+        ]
+        return allData
     }
   }
 
@@ -227,14 +244,7 @@ export default function Inventory() {
               </div>
             ) : filteredData().length === 0 ? (
               <div className="p-6 text-center text-gray-500 text-sm">
-                {filter === "all" 
-                  ? "No inventory data found"
-                  : filter === "feed"
-                  ? "No feed usage records found"
-                  : filter === "eggs"
-                  ? "No egg deliveries found"
-                  : "No ingoing feed deliveries found"
-                }
+                No inventory data found
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -245,7 +255,9 @@ export default function Inventory() {
                       <th className="p-2 sm:p-3 text-xs sm:text-sm">Time</th>
                       <th className="p-2 sm:p-3 text-xs sm:text-sm">Type</th>
                       <th className="p-2 sm:p-3 text-xs sm:text-sm">
-                        {filter === "feed" 
+                        {filter === "all" 
+                          ? "Category" 
+                          : filter === "feed" 
                           ? "Building" 
                           : filter === "eggs" 
                           ? "Client"
@@ -292,7 +304,9 @@ export default function Inventory() {
                           {item.type === "feed" 
                             ? item.building_name 
                             : item.type === "delivery"
-                            ? item.client
+                            ? item.delivery_type === "Outgoing Eggs"
+                              ? item.client
+                              : item.building_name
                             : item.building_name
                           }
                         </td>
